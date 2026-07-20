@@ -1,0 +1,91 @@
+name: Java packages release
+
+on:
+  push:
+    tags:
+      - 'mc/v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: java-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build and publish Java packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out tagged sources
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Read release version
+        id: release
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#mc/v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must have the form mc/vX.Y.Z, got: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: sdk/go.mod
+          cache-dependency-path: |
+            sdk/go.sum
+            examples/hello-native/go.sum
+
+      - name: Set up Gradle 9.5.1
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Build native ABI fixture
+        run: ./examples/hello-native/build.sh
+
+      - name: Build and test every Java target
+        env:
+          GMB_TEST_LIBRARY: ${{ github.workspace }}/examples/hello-native/dist/libhello_native.so
+        run: gradle clean build -Pmod_version="${{ steps.release.outputs.version }}" --console=plain
+
+      - name: Collect release JARs
+        shell: bash
+        run: |
+          version="${{ steps.release.outputs.version }}"
+          mkdir -p release
+          cp "versions/1.21.1/build/libs/go-minecraft-bridge-1.21.1-${version}.jar" release/
+          cp "versions/1.21.1/build/libs/go-minecraft-bridge-1.21.1-${version}-sources.jar" release/
+          cp "versions/26.1.2/build/libs/go-minecraft-bridge-26.1.2-${version}.jar" release/
+          cp "versions/26.1.2/build/libs/go-minecraft-bridge-26.1.2-${version}-sources.jar" release/
+          cp "platforms/paper/build/libs/go-minecraft-bridge-paper-${version}.jar" release/
+          cp "platforms/paper/build/libs/go-minecraft-bridge-paper-${version}-sources.jar" release/
+          find release -maxdepth 1 -type f -name '*.jar' -print -exec sha256sum {} \;
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/*.jar --clobber
+          else
+            gh release create "$TAG" release/*.jar \
+              --verify-tag \
+              --generate-notes \
+              --title "Go Minecraft Bridge $TAG"
+          fi
