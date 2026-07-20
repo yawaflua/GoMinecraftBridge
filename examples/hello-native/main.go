@@ -16,6 +16,7 @@ func (helloPlugin) Metadata() sdk.Metadata {
 		Version:     "0.1.0",
 		Description: "Native Go plugin example for Go Minecraft Bridge",
 		Authors:     []string{"yawaflua"},
+		Environment: sdk.PluginEnvironmentBoth,
 		ConfigSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -30,18 +31,34 @@ func (helloPlugin) Metadata() sdk.Metadata {
 
 func (helloPlugin) Init(context *sdk.Context, event sdk.InitEvent) error {
 	fmt.Printf("initialized for Minecraft %s; data=%s\n", event.MinecraftVersion, event.DataDirectory)
-	context.SubscribeSnapshot(true, sdk.BlockReference{
-		Dimension: "minecraft:overworld",
-		X:         0,
-		Y:         64,
-		Z:         0,
-	})
+	if event.RuntimeEnvironment == sdk.PluginEnvironmentServer {
+		context.SubscribeSnapshot(true, sdk.BlockReference{
+			Dimension: "minecraft:overworld",
+			X:         0,
+			Y:         64,
+			Z:         0,
+		})
+		// When you subscribe to a snapshot, you will receive a snapshot event every tick.
+		//In that snapshot event, you can access the current state of the world, block that you are subscribed to
+	}
+	return nil
+}
+
+func (helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTickEvent) error {
+	if event.Connected && event.Tick%1200 == 0 {
+		context.DisplayClientMessage("Client Go runtime is active")
+	}
 	return nil
 }
 
 func (helloPlugin) Tick(context *sdk.Context, snapshot sdk.ServerSnapshot) error {
 	if snapshot.Tick%200 == 0 {
 		fmt.Printf("tick=%d entities=%d watched_blocks=%d\n", snapshot.Tick, len(snapshot.Entities), len(snapshot.Blocks))
+		if len(snapshot.Entities) > 0 {
+			runtimeID := snapshot.Entities[0].RuntimeID
+			context.SystemCall(sdk.SystemCallGetEntity, sdk.GetEntityRequest{RuntimeID: &runtimeID})
+
+		}
 	}
 	return nil
 }
@@ -52,7 +69,7 @@ func (helloPlugin) Chat(context *sdk.Context, event sdk.ChatEvent) error {
 	}
 
 	context.SendMessage(event.PlayerUUID, "Hello from a native Go plugin!")
-	context.SystemCall("minecraft:server.info", map[string]any{})
+	context.SystemCall(sdk.SystemCallServerInfo, map[string]any{})
 	return nil
 }
 

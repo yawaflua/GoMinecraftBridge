@@ -1,0 +1,55 @@
+namespace gmb;
+
+table LevelSnapshot {
+  dimension:string;
+  game_time:long;
+  day_time:long;
+  raining:bool;
+  thundering:bool;
+}
+
+table EntitySnapshot {
+  runtime_id:int;
+  uuid:string;
+  type:string;
+  name:string;
+  dimension:string;
+  x:double;
+  y:double;
+  z:double;
+  yaw:float;
+  pitch:float;
+  velocity_x:double;
+  velocity_y:double;
+  velocity_z:double;
+  alive:bool;
+  player:bool;
+  has_health:bool;
+  health:float;
+  max_health:float;
+}
+
+table BlockProperty {
+  key:string;
+  value:string;
+}
+
+table BlockSnapshot {
+  dimension:string;
+  x:int;
+  y:int;
+  z:int;
+  block:string;
+  properties:[BlockProperty];
+}
+
+table ServerSnapshot {
+  tick:long;
+  timestamp_unix_milli:long;
+  levels:[LevelSnapshot];
+  entities:[EntitySnapshot];
+  blocks:[BlockSnapshot];
+}
+
+root_type ServerSnapshot;
+file_identifier "GMBS";

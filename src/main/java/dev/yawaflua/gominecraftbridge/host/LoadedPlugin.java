@@ -6,12 +6,16 @@ import dev.yawaflua.gominecraftbridge.protocol.PluginResponse;
 import dev.yawaflua.gominecraftbridge.protocol.Protocol;
 import dev.yawaflua.gominecraftbridge.protocol.ProtocolJson;
 import dev.yawaflua.gominecraftbridge.protocol.SnapshotSubscription;
+import dev.yawaflua.gominecraftbridge.protocol.ServerSnapshot;
+import dev.yawaflua.gominecraftbridge.protocol.TickSnapshotFlatBuffer;
 
 import java.util.Objects;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import dev.yawaflua.gominecraftbridge.protocol.PluginLog;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 
 public final class LoadedPlugin {
 	private static final int MAX_RETAINED_LOGS = 500;
@@ -36,6 +40,7 @@ public final class LoadedPlugin {
 			throw new IllegalArgumentException("Cannot read plugin metadata: " + response.error());
 		}
 
+		validateEnvironment(response.data());
 		this.metadata = ProtocolJson.GSON.fromJson(response.data(), PluginMetadata.class);
 		validateMetadata(this.metadata);
 	}
@@ -49,7 +54,13 @@ public final class LoadedPlugin {
 	}
 
 	private PluginResponse invokeUnchecked(Protocol.Operation operation, Object input) {
-		byte[] output = this.backend.call(operation, ProtocolJson.encode(input));
+		byte[] encodedInput;
+		if (operation == Protocol.Operation.TICK && input instanceof ServerSnapshot snapshot) {
+			encodedInput = TickSnapshotFlatBuffer.encode(snapshot);
+		} else {
+			encodedInput = ProtocolJson.encode(input);
+		}
+		byte[] output = this.backend.call(operation, encodedInput);
 		if (output.length == 0) {
 			throw new IllegalArgumentException("Plugin returned an empty response for " + operation);
 		}
@@ -95,6 +106,11 @@ public final class LoadedPlugin {
 	}
 
 	public synchronized void appendLog(PluginLog log) {
+		String message = log.message() == null ? "" : log.message();
+		if (message.length() > 8_192) {
+			message = message.substring(0, 8_192) + "… [truncated]";
+		}
+		log = new PluginLog(log.stream(), log.level(), message, log.timestampUnixMilli());
 		while (this.logs.size() >= MAX_RETAINED_LOGS) {
 			this.logs.removeFirst();
 		}
@@ -120,6 +136,24 @@ public final class LoadedPlugin {
 		}
 		if (metadata.apiVersion() != Protocol.ABI_VERSION) {
 			throw new IllegalArgumentException("Unsupported plugin API version " + metadata.apiVersion());
+		}
+	}
+
+	private static void validateEnvironment(JsonElement rawMetadata) {
+		if (!rawMetadata.isJsonObject()) {
+			throw new IllegalArgumentException("Plugin metadata must be a JSON object");
+		}
+		JsonObject object = rawMetadata.getAsJsonObject();
+		if (!object.has("environment") || object.get("environment").isJsonNull()) {
+			return;
+		}
+		JsonElement value = object.get("environment");
+		if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+			throw new IllegalArgumentException("Plugin environment must be server, client, or both");
+		}
+		String environment = value.getAsString();
+		if (!environment.equals("server") && !environment.equals("client") && !environment.equals("both")) {
+			throw new IllegalArgumentException("Invalid plugin environment: " + environment);
 		}
 	}
 }

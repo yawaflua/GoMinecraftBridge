@@ -6,6 +6,7 @@ import dev.yawaflua.gominecraftbridge.api.GoMinecraftBridgeApi;
 import dev.yawaflua.gominecraftbridge.api.SystemCallContext;
 import dev.yawaflua.gominecraftbridge.api.SystemCallHandler;
 import dev.yawaflua.gominecraftbridge.backend.nativeffi.NativePluginBackend;
+import dev.yawaflua.gominecraftbridge.compat.MinecraftVersionAdapter;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.PackageInspection;
@@ -21,7 +22,6 @@ import dev.yawaflua.gominecraftbridge.protocol.ServerSnapshot;
 import dev.yawaflua.gominecraftbridge.protocol.SystemCallRequest;
 import dev.yawaflua.gominecraftbridge.protocol.SystemCallResult;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.MinecraftServer;
 import org.slf4j.Logger;
 
@@ -91,6 +91,16 @@ public final class GoPluginManager {
 				}
 
 				LoadedPlugin plugin = new LoadedPlugin(new NativePluginBackend(candidate));
+				if (!plugin.metadata().environment().supportsServer()) {
+					this.packageInspections.add(new PackageInspection(
+							normalized.toString(), true, plugin.metadata().id(), null
+					));
+					this.logger.info(
+							"Skipping client-only Go plugin {} in the server runtime",
+							plugin.metadata().id()
+					);
+					continue;
+				}
 				LoadedPlugin duplicate = this.plugins.putIfAbsent(plugin.metadata().id(), plugin);
 				if (duplicate != null) {
 					throw new IllegalArgumentException("Duplicate plugin id " + plugin.metadata().id());
@@ -240,7 +250,7 @@ public final class GoPluginManager {
 			PluginResponse response = plugin.invoke(
 					Protocol.Operation.INIT,
 					new InitEvent(
-							SharedConstants.getCurrentVersion().name(),
+							MinecraftVersionAdapter.gameVersion(),
 							server.isDedicatedServer(),
 							pluginData.toAbsolutePath().toString()
 					)

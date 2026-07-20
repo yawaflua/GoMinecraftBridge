@@ -13,6 +13,7 @@ var (
 	registeredPlugin Plugin
 )
 
+// Register registers a plugin with the server.
 func Register(plugin Plugin) {
 	if plugin == nil {
 		panic("sdk: cannot register a nil plugin")
@@ -27,6 +28,7 @@ func Register(plugin Plugin) {
 	enableOutputCapture()
 }
 
+// Dispatch dispatches a plugin operation to the registered plugin.
 func Dispatch(operation int, input []byte) (output []byte) {
 	context := &Context{}
 	result := response{Status: "ok"}
@@ -61,6 +63,9 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		if metadata.APIVersion == 0 {
 			metadata.APIVersion = ABIVersion
 		}
+		if metadata.Environment == "" {
+			metadata.Environment = PluginEnvironmentServer
+		}
 		result.Data = metadata
 	case OperationInit:
 		var event InitEvent
@@ -72,7 +77,7 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		}
 	case OperationTick:
 		var snapshot ServerSnapshot
-		err = decode(input, &snapshot)
+		snapshot, err = decodeTickSnapshot(input)
 		if err == nil {
 			if handler, ok := plugin.(TickHandler); ok {
 				err = handler.Tick(context, snapshot)
@@ -108,6 +113,14 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		if err == nil {
 			if handler, ok := plugin.(Deinitializer); ok {
 				err = handler.Deinit(context, event)
+			}
+		}
+	case OperationClientTick:
+		var event ClientTickEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(ClientTickHandler); ok {
+				err = handler.ClientTick(context, event)
 			}
 		}
 	default:

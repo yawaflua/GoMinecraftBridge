@@ -1,6 +1,14 @@
 pluginManagement {
 	repositories {
 		maven {
+			name = 'Architectury'
+			url = 'https://maven.architectury.dev/'
+		}
+		maven {
+			name = 'Forge'
+			url = 'https://maven.minecraftforge.net/'
+		}
+		maven {
 			name = 'Fabric'
 			url = 'https://maven.fabricmc.net/'
 		}
@@ -10,3 +18,12 @@ pluginManagement {
 }
 
 rootProject.name = 'go-minecraft-bridge'
+
+include 'mc1211'
+project(':mc1211').projectDir = file('versions/1.21.1')
+
+include 'mc2612'
+project(':mc2612').projectDir = file('versions/26.1.2')
+
+include 'paper'
+project(':paper').projectDir = file('platforms/paper')

@@ -2,7 +2,7 @@ package sdk
 
 import "encoding/json"
 
-const ABIVersion = 1
+const ABIVersion = 2
 
 const (
 	OperationMetadata         = 1
@@ -12,23 +12,47 @@ const (
 	OperationDeath            = 5
 	OperationSystemCallResult = 6
 	OperationDeinit           = 7
+	OperationClientTick       = 8
+)
+
+// PluginEnvironment declares which Minecraft process may execute a plugin.
+type PluginEnvironment string
+
+const (
+	PluginEnvironmentServer PluginEnvironment = "server"
+	PluginEnvironmentClient PluginEnvironment = "client"
+	PluginEnvironmentBoth   PluginEnvironment = "both"
 )
 
 type Metadata struct {
-	ID           string         `json:"id"`
-	Name         string         `json:"name"`
-	Version      string         `json:"version"`
-	Description  string         `json:"description,omitempty"`
-	Authors      []string       `json:"authors,omitempty"`
-	Website      string         `json:"website,omitempty"`
-	APIVersion   int            `json:"apiVersion"`
-	ConfigSchema map[string]any `json:"configSchema,omitempty"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Version      string            `json:"version"`
+	Description  string            `json:"description,omitempty"`
+	Authors      []string          `json:"authors,omitempty"`
+	Website      string            `json:"website,omitempty"`
+	APIVersion   int               `json:"apiVersion"`
+	ConfigSchema map[string]any    `json:"configSchema,omitempty"`
+	Environment  PluginEnvironment `json:"environment"`
 }
 
 type InitEvent struct {
-	MinecraftVersion string `json:"minecraftVersion"`
-	Dedicated        bool   `json:"dedicated"`
-	DataDirectory    string `json:"dataDirectory"`
+	MinecraftVersion   string            `json:"minecraftVersion"`
+	Dedicated          bool              `json:"dedicated"`
+	DataDirectory      string            `json:"dataDirectory"`
+	RuntimeEnvironment PluginEnvironment `json:"runtimeEnvironment"`
+}
+
+// ClientTickEvent contains client-local state. Pointer-like values are empty
+// when the client is at the title screen or is not connected to a world.
+type ClientTickEvent struct {
+	Tick               int64  `json:"tick"`
+	TimestampUnixMilli int64  `json:"timestampUnixMilli"`
+	Connected          bool   `json:"connected"`
+	ServerAddress      string `json:"serverAddress,omitempty"`
+	PlayerUUID         string `json:"playerUuid,omitempty"`
+	PlayerName         string `json:"playerName,omitempty"`
+	Dimension          string `json:"dimension,omitempty"`
 }
 
 type ServerSnapshot struct {
@@ -103,6 +127,24 @@ type SystemCallResult struct {
 	Success bool            `json:"success"`
 	Data    json.RawMessage `json:"data"`
 	Error   string          `json:"error"`
+}
+
+// SystemCallType identifies a system call provided by the bridge itself.
+// Use Context.CustomSystemCall for calls registered by another mod.
+type SystemCallType string
+
+const (
+	SystemCallServerInfo SystemCallType = "minecraft:server.info"
+	SystemCallPlayerGet  SystemCallType = "minecraft:player.get"
+	SystemCallBlockGet   SystemCallType = "minecraft:block.get"
+	SystemCallGetEntity  SystemCallType = "minecraft:get_entity"
+)
+
+// GetEntityRequest selects an entity by UUID or by its runtime ID.
+// Exactly one field must be set.
+type GetEntityRequest struct {
+	UUID      string `json:"uuid,omitempty"`
+	RuntimeID *int   `json:"runtimeId,omitempty"`
 }
 
 type DeinitEvent struct {

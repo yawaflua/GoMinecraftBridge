@@ -1,0 +1,142 @@
+plugins {
+	id 'java'
+	id 'com.gradleup.shadow'
+}
+
+version = rootProject.mod_version
+group = rootProject.maven_group
+
+base {
+	archivesName = "${rootProject.archives_base_name}-paper"
+}
+
+repositories {
+	mavenCentral()
+	maven {
+		name = 'papermc'
+		url = 'https://repo.papermc.io/repository/maven-public/'
+	}
+}
+
+def sharedRoot = rootProject.projectDir
+def prepareMainSources = tasks.register('prepareMainSources', Sync) {
+	from(sharedRoot.toPath().resolve('src/main/java')) {
+		include 'dev/yawaflua/gominecraftbridge/backend/**'
+		include 'dev/yawaflua/gominecraftbridge/management/**'
+		include 'dev/yawaflua/gominecraftbridge/protocol/**'
+		include 'dev/yawaflua/gominecraftbridge/host/LoadedPlugin.java'
+		include 'dev/yawaflua/gominecraftbridge/host/PluginState.java'
+	}
+	from(sharedRoot.toPath().resolve('src/main/generated'))
+	from(file('src/main/java'))
+	into(layout.buildDirectory.dir('shared-sources/main'))
+}
+
+sourceSets {
+	main {
+		java.setSrcDirs([layout.buildDirectory.dir('shared-sources/main')])
+		resources.setSrcDirs([file('src/main/resources')])
+	}
+	test {
+		java.setSrcDirs([sharedRoot.toPath().resolve('src/test/java'), file('src/test/java')])
+		java.include 'dev/yawaflua/gominecraftbridge/backend/NativePluginBackendTest.java'
+		java.include 'dev/yawaflua/gominecraftbridge/host/LoadedPluginMetadataTest.java'
+		java.include 'dev/yawaflua/gominecraftbridge/paper/**'
+	}
+}
+
+configurations {
+	paperApi12111 {
+		canBeConsumed = false
+		canBeResolved = true
+	}
+	paperApi261 {
+		canBeConsumed = false
+		canBeResolved = true
+	}
+}
+
+dependencies {
+	compileOnly 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
+	paperApi12111 'io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT'
+	paperApi261 'io.papermc.paper:paper-api:26.1.2.build.74-stable'
+
+	implementation 'com.google.code.gson:gson:2.13.2'
+	implementation 'com.google.flatbuffers:flatbuffers-java:25.2.10'
+	implementation 'net.java.dev.jna:jna:5.18.1'
+
+	testImplementation 'io.papermc.paper:paper-api:1.21.1-R0.1-SNAPSHOT'
+	testImplementation platform('org.junit:junit-bom:5.13.4')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+	dependsOn prepareMainSources
+	options.release = 21
+}
+
+def registerPaperCompatibilityCompile = { String taskName, Configuration paperApi ->
+	tasks.register(taskName, JavaCompile) {
+		group = 'verification'
+		description = "Compiles the Paper/Purpur adapter against ${paperApi.name}."
+		dependsOn prepareMainSources
+		source = sourceSets.main.java
+		classpath = paperApi + configurations.runtimeClasspath
+		destinationDirectory = layout.buildDirectory.dir("compatibility/${paperApi.name}")
+		options.release = 21
+	}
+}
+
+def compilePaper12111Compatibility = registerPaperCompatibilityCompile(
+		'compilePaper12111Compatibility', configurations.paperApi12111
+)
+def compilePaper261Compatibility = registerPaperCompatibilityCompile(
+		'compilePaper261Compatibility', configurations.paperApi261
+)
+
+tasks.named('check') {
+	dependsOn compilePaper12111Compatibility, compilePaper261Compatibility
+}
+
+processResources {
+	inputs.property 'version', project.version
+	filesMatching('plugin.yml') {
+		expand 'version': project.version
+	}
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+tasks.named('jar') {
+	enabled = false
+}
+
+tasks.named('shadowJar') {
+	archiveClassifier = ''
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	relocate 'com.google.gson', 'dev.yawaflua.gominecraftbridge.paper.libs.gson'
+	relocate 'com.google.flatbuffers', 'dev.yawaflua.gominecraftbridge.paper.libs.flatbuffers'
+}
+
+tasks.named('assemble') {
+	dependsOn tasks.named('shadowJar')
+}
+
+tasks.named('test') {
+	dependsOn tasks.named('shadowJar')
+	systemProperty 'gmb.paper.shadowJar', tasks.named('shadowJar').flatMap { it.archiveFile }.get().asFile
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.named('sourcesJar') {
+	dependsOn prepareMainSources
+}

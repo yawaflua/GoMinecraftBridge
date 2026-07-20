@@ -1,0 +1,95 @@
+plugins {
+	id 'net.fabricmc.fabric-loom'
+	id 'maven-publish'
+}
+
+version = rootProject.mod_version
+group = rootProject.maven_group
+
+base {
+	archivesName = "${rootProject.archives_base_name}-26.1.2"
+}
+
+repositories {
+	mavenCentral()
+	maven { url 'https://maven.shedaniel.me/' }
+	maven { url 'https://maven.terraformersmc.com/releases/' }
+	maven { url 'https://api.modrinth.com/maven/' }
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		go_minecraft_bridge {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+
+	runs {
+		configureEach {
+			vmArg '--enable-native-access=ALL-UNNAMED'
+		}
+	}
+}
+
+sourceSets {
+	main {
+		java.srcDirs rootProject.file('src/main/java'), rootProject.file('src/main/generated')
+		resources.srcDirs rootProject.file('src/main/resources')
+	}
+	client {
+		java.srcDirs rootProject.file('src/client/java')
+	}
+	test {
+		java.srcDirs rootProject.file('src/test/java')
+	}
+}
+
+dependencies {
+	minecraft 'com.mojang:minecraft:26.1.2'
+	implementation 'net.fabricmc:fabric-loader:0.19.3'
+	implementation 'net.fabricmc.fabric-api:fabric-api:0.149.1+26.1.2'
+
+	implementation 'com.google.code.gson:gson:2.13.2'
+	implementation include('com.google.flatbuffers:flatbuffers-java:25.2.10')
+	implementation 'net.java.dev.jna:jna:5.18.1'
+
+	clientImplementation 'me.shedaniel.cloth:cloth-config-fabric:26.1.154'
+	clientImplementation 'maven.modrinth:modmenu:18.0.0'
+
+	testImplementation platform('org.junit:junit-bom:5.13.4')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+processResources {
+	inputs.property 'version', project.version
+	filesMatching('fabric.mod.json') {
+		expand 'version': project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 25
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+publishing {
+	publications {
+		create('mavenJava', MavenPublication) {
+			from components.java
+		}
+	}
+}

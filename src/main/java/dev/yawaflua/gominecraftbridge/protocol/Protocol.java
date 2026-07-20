@@ -1,7 +1,7 @@
 package dev.yawaflua.gominecraftbridge.protocol;
 
 public final class Protocol {
-	public static final int ABI_VERSION = 1;
+	public static final int ABI_VERSION = 2;
 	public static final int MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 	private Protocol() {
@@ -14,7 +14,9 @@ public final class Protocol {
 		CHAT(4),
 		DEATH(5),
 		SYSTEM_CALL_RESULT(6),
-		DEINIT(7);
+		DEINIT(7),
+		/** Client-process tick. Added as an optional ABI v2 operation. */
+		CLIENT_TICK(8);
 
 		private final int code;
 

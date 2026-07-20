@@ -6,6 +6,7 @@ import dev.yawaflua.gominecraftbridge.protocol.EntitySnapshot;
 import dev.yawaflua.gominecraftbridge.protocol.LevelSnapshot;
 import dev.yawaflua.gominecraftbridge.protocol.ServerSnapshot;
 import dev.yawaflua.gominecraftbridge.protocol.SnapshotSubscription;
+import dev.yawaflua.gominecraftbridge.compat.MinecraftVersionAdapter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
@@ -35,7 +36,7 @@ public final class MinecraftSnapshotFactory {
 			levels.add(new LevelSnapshot(
 					dimension,
 					level.getGameTime(),
-					level.getDefaultClockTime(),
+					MinecraftVersionAdapter.dayTime(level),
 					level.isRaining(),
 					level.isThundering()
 			));
@@ -111,7 +112,7 @@ public final class MinecraftSnapshotFactory {
 	}
 
 	private static String dimension(net.minecraft.world.level.Level level) {
-		return level.dimension().identifier().toString();
+		return MinecraftVersionAdapter.dimension(level);
 	}
 
 	private static Map<String, String> properties(BlockState state) {

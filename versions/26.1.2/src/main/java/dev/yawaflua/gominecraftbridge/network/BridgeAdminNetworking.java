@@ -1,12 +1,14 @@
 package dev.yawaflua.gominecraftbridge.network;
 
+import dev.yawaflua.gominecraftbridge.compat.MinecraftVersionAdapter;
 import dev.yawaflua.gominecraftbridge.host.GoPluginManager;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ProtocolJson;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.minecraft.server.permissions.Permissions;
+
+import java.util.List;
 
 public final class BridgeAdminNetworking {
 	private BridgeAdminNetworking() {
@@ -21,9 +23,12 @@ public final class BridgeAdminNetworking {
 		);
 
 		ServerPlayNetworking.registerGlobalReceiver(AdminRequestPayload.TYPE, (payload, context) -> {
-			boolean allowed = context.player().permissions().hasPermission(Permissions.COMMANDS_ADMIN);
+			boolean allowed = MinecraftVersionAdapter.isOperator(context.server(), context.player());
 			if (!allowed) {
-				send(context, plugins.managementSnapshot(false, "Administrator permission is required"));
+				send(context, withoutDetails(plugins.managementSnapshot(
+						false,
+						"Administrator permission is required"
+				)));
 				return;
 			}
 
@@ -31,12 +36,26 @@ public final class BridgeAdminNetworking {
 			if ("reload".equals(payload.action())) {
 				ReloadResult result = plugins.reload(payload.pluginId(), context.server());
 				message = result.message();
+			} else if ("rescan".equals(payload.action())) {
+				ReloadResult result = plugins.rescan(context.server());
+				message = result.message();
 			} else if (!"refresh".equals(payload.action())) {
 				message = "Unknown admin action: " + payload.action();
 			}
 
 			send(context, plugins.managementSnapshot(true, message));
 		});
+	}
+
+	static BridgeManagementSnapshot withoutDetails(BridgeManagementSnapshot snapshot) {
+		return new BridgeManagementSnapshot(
+				snapshot.generatedAtUnixMilli(),
+				snapshot.serverRunning(),
+				false,
+				snapshot.message(),
+				List.of(),
+				List.of()
+		);
 	}
 
 	private static void send(

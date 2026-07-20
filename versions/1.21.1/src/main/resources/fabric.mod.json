@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "go_minecraft_bridge",
+  "version": "${version}",
+  "name": "Go Minecraft Bridge",
+  "description": "A native Go plugin host with server and client runtimes.",
+  "authors": ["yawaflua"],
+  "license": "All-Rights-Reserved",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.yawaflua.gominecraftbridge.GoMinecraftBridgeMod"],
+    "client": ["dev.yawaflua.gominecraftbridge.client.GoMinecraftBridgeClient"],
+    "modmenu": ["dev.yawaflua.gominecraftbridge.client.GoBridgeModMenuIntegration"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.14",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "cloth-config": ">=15.0.140",
+    "modmenu": ">=11.0.3"
+  }
+}

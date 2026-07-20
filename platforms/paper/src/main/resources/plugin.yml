@@ -1,0 +1,15 @@
+name: GoMinecraftBridge
+version: '${version}'
+main: dev.yawaflua.gominecraftbridge.paper.PaperBridgePlugin
+api-version: '1.21'
+description: Native Go plugin host for Paper and Purpur servers
+author: yawaflua
+commands:
+  go-minecraft-bridge:
+    description: Inspect and manage native Go plugins
+    usage: /gmb <status|packages|metadata|logs|reload|rescan>
+    aliases: [gmb, gobridge]
+permissions:
+  go_minecraft_bridge.admin:
+    description: Allows management of native Go plugins
+    default: op

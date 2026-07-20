@@ -1,83 +1,25 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
-	id 'maven-publish'
+	id 'base'
+	id 'dev.architectury.loom' version "${architectury_loom_version}" apply false
+	id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
+	id 'com.gradleup.shadow' version '9.6.0' apply false
 }
 
-version = project.mod_version
 group = project.maven_group
+version = project.mod_version
 
-base {
-	archivesName = project.archives_base_name
+tasks.named('build') {
+	dependsOn ':mc1211:build', ':mc2612:build', ':paper:build'
 }
 
-repositories {
-	mavenCentral()
-	maven { url 'https://maven.shedaniel.me/' }
-	maven { url 'https://maven.terraformersmc.com/releases/' }
+tasks.register('buildAll') {
+	group = 'build'
+	description = 'Builds every supported Minecraft target.'
+	dependsOn ':mc1211:build', ':mc2612:build', ':paper:build'
 }
 
-loom {
-	splitEnvironmentSourceSets()
-
-	mods {
-		go_minecraft_bridge {
-			sourceSet sourceSets.main
-			sourceSet sourceSets.client
-		}
-	}
-
-	runs {
-		configureEach {
-			vmArg '--enable-native-access=ALL-UNNAMED'
-		}
-	}
-}
-
-dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-
-	implementation 'com.google.code.gson:gson:2.13.2'
-	implementation 'com.google.flatbuffers:flatbuffers-java:25.2.10'
-
-	modCompileOnly 'me.shedaniel.cloth:cloth-config-fabric:26.1.154'
-	modCompileOnly 'com.terraformersmc:modmenu:18.0.0'
-	modLocalRuntime 'me.shedaniel.cloth:cloth-config-fabric:26.1.154'
-	modLocalRuntime 'com.terraformersmc:modmenu:18.0.0'
-
-	testImplementation platform('org.junit:junit-bom:5.13.4')
-	testImplementation 'org.junit.jupiter:junit-jupiter'
-	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-processResources {
-	inputs.property 'version', project.version
-
-	filesMatching('fabric.mod.json') {
-		expand 'version': project.version
-	}
-}
-
-tasks.withType(JavaCompile).configureEach {
-	options.release = 25
-}
-
-tasks.withType(Test).configureEach {
-	useJUnitPlatform()
-	jvmArgs '--enable-native-access=ALL-UNNAMED'
-}
-
-java {
-	withSourcesJar()
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
-}
-
-publishing {
-	publications {
-		create('mavenJava', MavenPublication) {
-			from components.java
-		}
-	}
+tasks.register('testAll') {
+	group = 'verification'
+	description = 'Runs tests for every supported Minecraft target.'
+	dependsOn ':mc1211:test', ':mc2612:test', ':paper:test'
 }

@@ -12,6 +12,12 @@ type TickHandler interface {
 	Tick(context *Context, snapshot ServerSnapshot) error
 }
 
+// ClientTickHandler is invoked only by a client native runtime. A plugin with
+// environment "both" may implement TickHandler, ClientTickHandler, or both.
+type ClientTickHandler interface {
+	ClientTick(context *Context, event ClientTickEvent) error
+}
+
 type ChatHandler interface {
 	Chat(context *Context, event ChatEvent) error
 }

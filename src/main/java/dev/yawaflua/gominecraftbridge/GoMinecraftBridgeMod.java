@@ -27,8 +27,10 @@ public final class GoMinecraftBridgeMod implements ModInitializer {
 		GoPluginManager plugins = new GoPluginManager(LOGGER);
 		BridgeAdminNetworking.register(plugins);
 		MinecraftSnapshotFactory snapshots = new MinecraftSnapshotFactory();
-		plugins.discover();
 
+		// The common initializer also runs in a multiplayer client process. Delay
+		// server plugin discovery until a real dedicated/integrated server exists.
+		ServerLifecycleEvents.SERVER_STARTING.register(server -> plugins.discover());
 		ServerLifecycleEvents.SERVER_STARTED.register(plugins::start);
 		ServerTickEvents.END_SERVER_TICK.register(plugins::tick);
 		ServerLifecycleEvents.SERVER_STOPPING.register(plugins::stop);

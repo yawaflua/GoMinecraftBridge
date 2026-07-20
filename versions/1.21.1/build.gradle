@@ -1,0 +1,117 @@
+plugins {
+	id 'dev.architectury.loom'
+	id 'maven-publish'
+}
+
+version = rootProject.mod_version
+group = rootProject.maven_group
+
+base {
+	archivesName = "${rootProject.archives_base_name}-1.21.1"
+}
+
+repositories {
+	mavenCentral()
+	maven { url 'https://maven.shedaniel.me/' }
+	maven { url 'https://maven.terraformersmc.com/releases/' }
+	maven { url 'https://api.modrinth.com/maven/' }
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		go_minecraft_bridge {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+
+	runs {
+		configureEach {
+			vmArg '--enable-native-access=ALL-UNNAMED'
+		}
+	}
+}
+
+def sharedRoot = file('../..')
+def prepareMainSources = tasks.register('prepareMainSources', Sync) {
+	from(sharedRoot.toPath().resolve('src/main/java')) {
+		exclude 'dev/yawaflua/gominecraftbridge/compat/MinecraftVersionAdapter.java'
+		exclude 'dev/yawaflua/gominecraftbridge/network/AdminRequestPayload.java'
+		exclude 'dev/yawaflua/gominecraftbridge/network/AdminResponsePayload.java'
+		exclude 'dev/yawaflua/gominecraftbridge/network/BridgeAdminNetworking.java'
+	}
+	from(sharedRoot.toPath().resolve('src/main/generated'))
+	from(file('src/main/java'))
+	into(layout.buildDirectory.dir('version-sources/main'))
+}
+
+sourceSets {
+	main {
+		java.setSrcDirs([layout.buildDirectory.dir('version-sources/main')])
+		resources.setSrcDirs([file('src/main/resources')])
+	}
+	client {
+		java.setSrcDirs([sharedRoot.toPath().resolve('src/client/java')])
+	}
+	test {
+		java.setSrcDirs([sharedRoot.toPath().resolve('src/test/java'), file('src/test/java')])
+	}
+}
+
+dependencies {
+	minecraft 'com.mojang:minecraft:1.21.1'
+	mappings loom.officialMojangMappings()
+	modImplementation 'net.fabricmc:fabric-loader:0.16.14'
+	modImplementation 'net.fabricmc.fabric-api:fabric-api:0.116.14+1.21.1'
+
+	implementation 'com.google.code.gson:gson:2.13.2'
+	implementation include('com.google.flatbuffers:flatbuffers-java:25.2.10')
+	implementation 'net.java.dev.jna:jna:5.18.1'
+
+	modClientImplementation 'me.shedaniel.cloth:cloth-config-fabric:15.0.140'
+	modClientImplementation 'maven.modrinth:modmenu:11.0.3'
+
+	testImplementation platform('org.junit:junit-bom:5.13.4')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+processResources {
+	inputs.property 'version', project.version
+	filesMatching('fabric.mod.json') {
+		expand 'version': project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 21
+}
+
+tasks.named('compileJava') {
+	dependsOn prepareMainSources
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+	jvmArgs '--enable-native-access=ALL-UNNAMED'
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.named('sourcesJar') {
+	dependsOn prepareMainSources
+}
+
+publishing {
+	publications {
+		create('mavenJava', MavenPublication) {
+			from components.java
+		}
+	}
+}
