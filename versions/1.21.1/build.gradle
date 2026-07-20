@@ -53,7 +53,7 @@ sourceSets {
 		resources.setSrcDirs([file('src/main/resources')])
 	}
 	client {
-		java.setSrcDirs([sharedRoot.toPath().resolve('src/client/java')])
+		java.setSrcDirs([sharedRoot.toPath().resolve('src/client/java'), file('src/client/java')])
 	}
 	test {
 		java.setSrcDirs([sharedRoot.toPath().resolve('src/test/java'), file('src/test/java')])

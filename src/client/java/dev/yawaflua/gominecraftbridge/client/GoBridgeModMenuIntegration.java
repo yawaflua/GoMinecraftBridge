@@ -4,6 +4,8 @@ import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
 import net.fabricmc.loader.api.FabricLoader;
 
+import java.util.Map;
+
 public final class GoBridgeModMenuIntegration implements ModMenuApi {
 	@Override
 	public ConfigScreenFactory<?> getModConfigScreenFactory() {
@@ -13,5 +15,13 @@ public final class GoBridgeModMenuIntegration implements ModMenuApi {
 			}
 			return ClothManagementScreen.create(parent, true);
 		};
+	}
+
+	@Override
+	public Map<String, ConfigScreenFactory<?>> getProvidedConfigScreenFactories() {
+		if (!FabricLoader.getInstance().isModLoaded("cloth-config")) {
+			return Map.of();
+		}
+		return NativeModMenuEntries.configScreenFactories();
 	}
 }

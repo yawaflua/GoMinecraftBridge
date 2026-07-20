@@ -4,8 +4,12 @@ import dev.yawaflua.gominecraftbridge.api.GoMinecraftBridgeApi;
 import dev.yawaflua.gominecraftbridge.host.BuiltInSystemCalls;
 import dev.yawaflua.gominecraftbridge.host.GoPluginManager;
 import dev.yawaflua.gominecraftbridge.host.MinecraftSnapshotFactory;
+import dev.yawaflua.gominecraftbridge.protocol.AfterDamageEvent;
+import dev.yawaflua.gominecraftbridge.protocol.AllowDamageEvent;
+import dev.yawaflua.gominecraftbridge.protocol.AllowDeathEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeathEvent;
+import dev.yawaflua.gominecraftbridge.protocol.MobConversionEvent;
 import dev.yawaflua.gominecraftbridge.network.BridgeAdminNetworking;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
@@ -28,8 +32,9 @@ public final class GoMinecraftBridgeMod implements ModInitializer {
 		BridgeAdminNetworking.register(plugins);
 		MinecraftSnapshotFactory snapshots = new MinecraftSnapshotFactory();
 
-		// The common initializer also runs in a multiplayer client process. Delay
-		// server plugin discovery until a real dedicated/integrated server exists.
+		// The common initializer also runs in a multiplayer client process. Its
+		// client entrypoint discovers and starts client plugins immediately; this
+		// server runtime waits until a real dedicated/integrated server exists.
 		ServerLifecycleEvents.SERVER_STARTING.register(server -> plugins.discover());
 		ServerLifecycleEvents.SERVER_STARTED.register(plugins::start);
 		ServerTickEvents.END_SERVER_TICK.register(plugins::tick);
@@ -45,6 +50,50 @@ public final class GoMinecraftBridgeMod implements ModInitializer {
 				sender.level().getServer()
 		));
 
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
+			var attacker = source.getEntity();
+			return plugins.allowDamage(
+					new AllowDamageEvent(
+							snapshots.entity(entity),
+							source.getMsgId(),
+							attacker == null ? null : attacker.getUUID().toString(),
+							amount,
+							Instant.now().toEpochMilli()
+					),
+					entity.level().getServer()
+			);
+		});
+
+		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, baseDamageTaken, damageTaken, blocked) -> {
+			var attacker = source.getEntity();
+			plugins.afterDamage(
+					new AfterDamageEvent(
+							snapshots.entity(entity),
+							source.getMsgId(),
+							attacker == null ? null : attacker.getUUID().toString(),
+							baseDamageTaken,
+							damageTaken,
+							blocked,
+							Instant.now().toEpochMilli()
+					),
+					entity.level().getServer()
+			);
+		});
+
+		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, damageAmount) -> {
+			var attacker = source.getEntity();
+			return plugins.allowDeath(
+					new AllowDeathEvent(
+							snapshots.entity(entity),
+							source.getMsgId(),
+							attacker == null ? null : attacker.getUUID().toString(),
+							damageAmount,
+							Instant.now().toEpochMilli()
+					),
+					entity.level().getServer()
+			);
+		});
+
 		ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
 			var attacker = source.getEntity();
 			plugins.death(
@@ -58,6 +107,20 @@ public final class GoMinecraftBridgeMod implements ModInitializer {
 			);
 		});
 
-		LOGGER.info("Go Minecraft Bridge initialized");
+		// The third callback parameter changed from a boolean to ConversionParams
+		// in newer Fabric API versions. The common payload intentionally contains
+		// only the stable before/after entity snapshots.
+		ServerLivingEntityEvents.MOB_CONVERSION.register((previous, converted, conversionContext) ->
+				plugins.mobConversion(
+						new MobConversionEvent(
+								snapshots.entity(previous),
+								snapshots.entity(converted),
+								Instant.now().toEpochMilli()
+						),
+						converted.level().getServer()
+				)
+		);
+
+		LOGGER.info("[GMB] GMB initialized");
 	}
 }

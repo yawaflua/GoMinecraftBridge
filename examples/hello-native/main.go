@@ -3,30 +3,45 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/yawaflua/GoMinecraftBridge/sdk"
 )
 
-type helloPlugin struct{}
+type helloPlugin struct {
+	hudDemoTick int64
+	hudVisible  bool
+}
+
+type helloConfig struct {
+	Greeting     string   `json:"greeting"`
+	Enabled      bool     `json:"enabled"`
+	RepeatTicks  int      `json:"repeatTicks"`
+	FavoriteTags []string `json:"favoriteTags"`
+}
+
+var config = &helloConfig{
+	Greeting:     "Hello from Go!",
+	Enabled:      true,
+	RepeatTicks:  1200,
+	FavoriteTags: []string{"native", "go"},
+}
 
 func (helloPlugin) Metadata() sdk.Metadata {
 	return sdk.Metadata{
-		ID:          "hello_native",
-		Name:        "Hello Native",
-		Version:     "0.1.0",
-		Description: "Native Go plugin example for Go Minecraft Bridge",
-		Authors:     []string{"yawaflua"},
-		Environment: sdk.PluginEnvironmentBoth,
-		ConfigSchema: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"greeting": map[string]any{
-					"type":    "string",
-					"default": "Hello from Go!",
-				},
-			},
-		},
+		ID:           "hello_native",
+		Name:         "Hello Native",
+		Version:      "0.1.0",
+		Description:  "Native Go plugin example for Go Minecraft Bridge",
+		Authors:      []string{"yawaflua"},
+		Environment:  sdk.PluginEnvironmentBoth,
+		ConfigSchema: config,
 	}
+}
+
+func (helloPlugin) ConfigUpdated(_ *sdk.Context, _ sdk.ConfigUpdateEvent) error {
+	fmt.Printf("configuration updated: enabled=%t greeting=%q\n", config.Enabled, config.Greeting)
+	return nil
 }
 
 func (helloPlugin) Init(context *sdk.Context, event sdk.InitEvent) error {
@@ -44,9 +59,62 @@ func (helloPlugin) Init(context *sdk.Context, event sdk.InitEvent) error {
 	return nil
 }
 
-func (helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTickEvent) error {
-	if event.Connected && event.Tick%1200 == 0 {
-		context.DisplayClientMessage("Client Go runtime is active")
+func (plugin *helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTickEvent) error {
+	if config.Enabled && event.Connected && config.RepeatTicks > 0 && event.Tick%int64(config.RepeatTicks) == 0 {
+		context.DisplayClientMessage(config.Greeting)
+	}
+
+	if !config.Enabled || !event.Connected {
+		if plugin.hudVisible {
+			// Remove every element owned by this plugin at once.
+			context.ClearHUD()
+		}
+		plugin.hudDemoTick = 0
+		plugin.hudVisible = false
+		return nil
+	}
+
+	plugin.hudDemoTick++
+	switch plugin.hudDemoTick {
+	case 1:
+		// Render independent retained elements. Named IDs let later calls update
+		// or remove one element without touching the others.
+		context.RenderHUD(sdk.HUDRectangle(
+			8, 8, 150, 38, 0x90000000, sdk.HUDTopLeft,
+		).Named("hello-panel"))
+		context.RenderHUD(sdk.HUDText(
+			"Go Minecraft Bridge", 14, 13, 0xff55ff55, true, sdk.HUDTopLeft,
+		).Named("hello-title"))
+		context.RenderHUD(sdk.HUDText(
+			"HUD tick: 1", 14, 29, 0xffffffff, true, sdk.HUDTopLeft,
+		).Named("hello-status"))
+
+		// This element removes itself after three seconds.
+		context.RenderHUD(sdk.HUDText(
+			"Temporary notification", 8, 8, 0xffffff55, true, sdk.HUDTopRight,
+		).Named("hello-notice").Temporary(3 * time.Second))
+		plugin.hudVisible = true
+
+	case 20, 40, 60, 80, 100, 120, 140, 160, 180:
+		// Rendering the same ID updates the existing element in place.
+		context.RenderHUD(sdk.HUDText(
+			fmt.Sprintf("HUD tick: %d", plugin.hudDemoTick),
+			14, 29, 0xffffffff, true, sdk.HUDTopLeft,
+		).Named("hello-status"))
+
+	case 200:
+		// Remove just the changing status line.
+		context.RemoveHUD("hello-status")
+
+	case 260:
+		// Remove the remaining persistent elements individually.
+		context.RemoveHUD("hello-title")
+		context.RemoveHUD("hello-panel")
+		plugin.hudVisible = false
+
+	case 320:
+		// Repeat the complete draw/update/remove demonstration.
+		plugin.hudDemoTick = 0
 	}
 	return nil
 }
@@ -68,7 +136,7 @@ func (helloPlugin) Chat(context *sdk.Context, event sdk.ChatEvent) error {
 		return nil
 	}
 
-	context.SendMessage(event.PlayerUUID, "Hello from a native Go plugin!")
+	context.SendMessage(event.PlayerUUID, config.Greeting)
 	context.SystemCall(sdk.SystemCallServerInfo, map[string]any{})
 	return nil
 }
@@ -99,7 +167,7 @@ func (helloPlugin) Deinit(context *sdk.Context, event sdk.DeinitEvent) error {
 }
 
 func init() {
-	sdk.Register(helloPlugin{})
+	sdk.Register(&helloPlugin{})
 }
 
 func main() {}

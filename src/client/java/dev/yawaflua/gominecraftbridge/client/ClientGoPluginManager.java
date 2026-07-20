@@ -12,12 +12,15 @@ import dev.yawaflua.gominecraftbridge.management.PackageInspection;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ConfigUpdateEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
 import dev.yawaflua.gominecraftbridge.protocol.InitEvent;
+import dev.yawaflua.gominecraftbridge.protocol.HudScene;
 import dev.yawaflua.gominecraftbridge.protocol.PluginEnvironment;
 import dev.yawaflua.gominecraftbridge.protocol.PluginLog;
 import dev.yawaflua.gominecraftbridge.protocol.PluginResponse;
 import dev.yawaflua.gominecraftbridge.protocol.Protocol;
+import dev.yawaflua.gominecraftbridge.protocol.ProtocolJson;
 import dev.yawaflua.gominecraftbridge.protocol.SystemCallRequest;
 import dev.yawaflua.gominecraftbridge.protocol.SystemCallResult;
 import net.fabricmc.loader.api.FabricLoader;
@@ -28,6 +31,7 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,6 +52,7 @@ public final class ClientGoPluginManager {
 	private final Path dataDirectory;
 	private final Map<String, LoadedPlugin> plugins = new LinkedHashMap<>();
 	private final List<PackageInspection> packageInspections = new ArrayList<>();
+	private final ClientHudState hud = new ClientHudState();
 	private long tick;
 	private boolean running;
 
@@ -116,6 +121,9 @@ public final class ClientGoPluginManager {
 	}
 
 	public synchronized void start(Minecraft client) {
+		if (this.running) {
+			return;
+		}
 		this.running = true;
 		for (LoadedPlugin plugin : this.plugins.values()) {
 			startPlugin(plugin);
@@ -124,6 +132,7 @@ public final class ClientGoPluginManager {
 
 	public synchronized void tick(Minecraft client) {
 		this.tick++;
+		this.hud.pruneExpired();
 		for (LoadedPlugin plugin : runningPlugins()) {
 			invoke(plugin, Protocol.Operation.CLIENT_TICK, createTick(client), client);
 		}
@@ -141,6 +150,7 @@ public final class ClientGoPluginManager {
 				bridgeLog(plugin, "error", "Client deinit failed: " + rootMessage(exception));
 				this.logger.error("Client Go plugin {} failed during deinit", plugin.metadata().id(), exception);
 			} finally {
+				this.hud.clear(plugin.metadata().id());
 				plugin.markStopped();
 			}
 		}
@@ -167,11 +177,48 @@ public final class ClientGoPluginManager {
 				bridgeLog(plugin, "error", "Client reload deinit failed: " + rootMessage(exception));
 			}
 		}
+		this.hud.clear(pluginId);
 		plugin.prepareReload();
 		boolean started = startPlugin(plugin);
 		return new ReloadResult(started, started
 				? "Client plugin " + pluginId + " restarted (the native binary remains loaded)"
 				: "Client plugin " + pluginId + " failed to restart");
+	}
+
+	public synchronized ReloadResult updateConfig(String pluginId, JsonElement submitted, Minecraft client) {
+		LoadedPlugin plugin = this.plugins.get(pluginId);
+		if (plugin == null) {
+			return new ReloadResult(false, "Unknown client plugin: " + pluginId);
+		}
+		if (plugin.metadata().configSchema() == null || !plugin.metadata().configWritable()) {
+			return new ReloadResult(false, "Plugin " + pluginId + " does not expose a configuration");
+		}
+		if (submitted == null || !submitted.isJsonObject()) {
+			return new ReloadResult(false, "Plugin configuration must be a JSON object");
+		}
+
+		try {
+			PluginResponse response = plugin.invoke(
+					Protocol.Operation.CONFIG_UPDATE,
+					new ConfigUpdateEvent(submitted.getAsJsonObject())
+			);
+			processResponse(plugin, response, client, 0);
+			if (response.isError()) {
+				return new ReloadResult(false, "Plugin rejected the configuration: " + response.error());
+			}
+
+			JsonElement accepted = response.data();
+			var snapshot = accepted != null && accepted.isJsonObject()
+					? accepted.getAsJsonObject()
+					: submitted.getAsJsonObject();
+			plugin.configSnapshot(snapshot);
+			writeSavedConfig(pluginId, snapshot);
+			bridgeLog(plugin, "info", "Configuration updated from Cloth Config");
+			return new ReloadResult(true, "Plugin " + pluginId + " configuration updated");
+		} catch (RuntimeException | IOException exception) {
+			bridgeLog(plugin, "error", "Configuration update failed: " + rootMessage(exception));
+			return new ReloadResult(false, "Cannot update plugin configuration: " + rootMessage(exception));
+		}
 	}
 
 	public synchronized BridgeManagementSnapshot managementSnapshot(String message) {
@@ -190,10 +237,15 @@ public final class ClientGoPluginManager {
 		);
 	}
 
+	public ClientHudState hud() {
+		return this.hud;
+	}
+
 	private boolean startPlugin(LoadedPlugin plugin) {
 		try {
 			Path pluginData = this.dataDirectory.resolve(plugin.metadata().id());
 			Files.createDirectories(pluginData);
+			loadSavedConfig(plugin, pluginData, Minecraft.getInstance());
 			PluginResponse response = plugin.invoke(
 					Protocol.Operation.INIT,
 					new InitEvent(
@@ -215,6 +267,50 @@ public final class ClientGoPluginManager {
 		} catch (Exception exception) {
 			disable(plugin, "client initialization failed", exception);
 			return false;
+		}
+	}
+
+	private void loadSavedConfig(LoadedPlugin plugin, Path pluginData, Minecraft client) {
+		if (plugin.metadata().configSchema() == null || !plugin.metadata().configWritable()) {
+			return;
+		}
+		Path path = pluginData.resolve("config.json");
+		if (!Files.isRegularFile(path)) {
+			return;
+		}
+		try {
+			JsonElement saved = ProtocolJson.GSON.fromJson(Files.readString(path), JsonElement.class);
+			if (saved == null || !saved.isJsonObject()) {
+				throw new IllegalArgumentException("saved configuration is not a JSON object");
+			}
+			PluginResponse response = plugin.invoke(
+					Protocol.Operation.CONFIG_UPDATE,
+					new ConfigUpdateEvent(saved.getAsJsonObject())
+			);
+			processResponse(plugin, response, client, 0);
+			if (response.isError()) {
+				throw new IllegalArgumentException(response.error());
+			}
+			JsonElement accepted = response.data();
+			plugin.configSnapshot(accepted != null && accepted.isJsonObject()
+					? accepted.getAsJsonObject()
+					: saved.getAsJsonObject());
+			bridgeLog(plugin, "info", "Loaded saved configuration");
+		} catch (Exception exception) {
+			bridgeLog(plugin, "error", "Cannot load saved configuration: " + rootMessage(exception));
+		}
+	}
+
+	private void writeSavedConfig(String pluginId, JsonElement config) throws IOException {
+		Path pluginData = this.dataDirectory.resolve(pluginId);
+		Files.createDirectories(pluginData);
+		Path target = pluginData.resolve("config.json");
+		Path temporary = pluginData.resolve("config.json.tmp");
+		Files.writeString(temporary, ProtocolJson.GSON.toJson(config));
+		try {
+			Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+		} catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+			Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
 		}
 	}
 
@@ -288,6 +384,40 @@ public final class ClientGoPluginManager {
 	}
 
 	private void executeAction(LoadedPlugin plugin, ActionRequest action, Minecraft client) {
+		if ("minecraft:client.hud.set".equals(action.type())) {
+			try {
+				HudScene scene = ProtocolJson.GSON.fromJson(action.payload(), HudScene.class);
+				if (scene == null) {
+					throw new IllegalArgumentException("HUD scene is missing");
+				}
+				this.hud.replace(plugin.metadata().id(), scene);
+			} catch (RuntimeException exception) {
+				bridgeLog(plugin, "warn", "Rejected malformed HUD scene: " + rootMessage(exception));
+			}
+			return;
+		}
+		if ("minecraft:client.hud.upsert".equals(action.type())) {
+			try {
+				JsonElement rawElement = action.payload() == null ? null : action.payload().get("element");
+				var element = ProtocolJson.GSON.fromJson(rawElement, dev.yawaflua.gominecraftbridge.protocol.HudElementDto.class);
+				if (element == null) {
+					throw new IllegalArgumentException("HUD element is missing");
+				}
+				this.hud.upsert(plugin.metadata().id(), element);
+			} catch (RuntimeException exception) {
+				bridgeLog(plugin, "warn", "Rejected malformed HUD element: " + rootMessage(exception));
+			}
+			return;
+		}
+		if ("minecraft:client.hud.remove".equals(action.type())) {
+			JsonElement id = action.payload() == null ? null : action.payload().get("id");
+			if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
+				bridgeLog(plugin, "warn", "Rejected HUD removal without an element id");
+			} else {
+				this.hud.remove(plugin.metadata().id(), id.getAsString());
+			}
+			return;
+		}
 		if (!"minecraft:client.chat.display".equals(action.type())) {
 			bridgeLog(plugin, "warn", "Rejected action in client runtime: " + action.type());
 			return;
@@ -339,6 +469,7 @@ public final class ClientGoPluginManager {
 
 	private void disable(LoadedPlugin plugin, String reason, Throwable throwable) {
 		plugin.disable();
+		this.hud.clear(plugin.metadata().id());
 		bridgeLog(plugin, "error", "Plugin disabled: " + reason
 				+ (throwable == null ? "" : " — " + rootMessage(throwable)));
 		if (throwable == null) {

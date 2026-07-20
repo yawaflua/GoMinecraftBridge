@@ -16,7 +16,17 @@ public final class Protocol {
 		SYSTEM_CALL_RESULT(6),
 		DEINIT(7),
 		/** Client-process tick. Added as an optional ABI v2 operation. */
-		CLIENT_TICK(8);
+		CLIENT_TICK(8),
+		/** Replaces the configuration exposed through plugin metadata. */
+		CONFIG_UPDATE(9),
+		/** Lets a server plugin allow or deny damage before it is applied. */
+		ALLOW_DAMAGE(10),
+		/** Reports the damage that was actually applied to a living entity. */
+		AFTER_DAMAGE(11),
+		/** Lets a server plugin allow or deny a living entity's death. */
+		ALLOW_DEATH(12),
+		/** Reports a mob being replaced by its converted form. */
+		MOB_CONVERSION(13);
 
 		private final int code;
 

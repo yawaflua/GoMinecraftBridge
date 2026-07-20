@@ -2,6 +2,9 @@ package dev.yawaflua.gominecraftbridge.host;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
+import dev.yawaflua.gominecraftbridge.protocol.AfterDamageEvent;
+import dev.yawaflua.gominecraftbridge.protocol.AllowDamageEvent;
+import dev.yawaflua.gominecraftbridge.protocol.AllowDeathEvent;
 import dev.yawaflua.gominecraftbridge.api.GoMinecraftBridgeApi;
 import dev.yawaflua.gominecraftbridge.api.SystemCallContext;
 import dev.yawaflua.gominecraftbridge.api.SystemCallHandler;
@@ -15,6 +18,7 @@ import dev.yawaflua.gominecraftbridge.protocol.ChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeathEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
 import dev.yawaflua.gominecraftbridge.protocol.InitEvent;
+import dev.yawaflua.gominecraftbridge.protocol.MobConversionEvent;
 import dev.yawaflua.gominecraftbridge.protocol.PluginLog;
 import dev.yawaflua.gominecraftbridge.protocol.PluginResponse;
 import dev.yawaflua.gominecraftbridge.protocol.Protocol;
@@ -160,6 +164,26 @@ public final class GoPluginManager {
 		}
 	}
 
+	public synchronized boolean allowDamage(AllowDamageEvent event, MinecraftServer server) {
+		return decide(Protocol.Operation.ALLOW_DAMAGE, event, server);
+	}
+
+	public synchronized void afterDamage(AfterDamageEvent event, MinecraftServer server) {
+		for (LoadedPlugin plugin : runningPlugins()) {
+			invoke(plugin, Protocol.Operation.AFTER_DAMAGE, event, server);
+		}
+	}
+
+	public synchronized boolean allowDeath(AllowDeathEvent event, MinecraftServer server) {
+		return decide(Protocol.Operation.ALLOW_DEATH, event, server);
+	}
+
+	public synchronized void mobConversion(MobConversionEvent event, MinecraftServer server) {
+		for (LoadedPlugin plugin : runningPlugins()) {
+			invoke(plugin, Protocol.Operation.MOB_CONVERSION, event, server);
+		}
+	}
+
 	public synchronized void stop(MinecraftServer server) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			try {
@@ -279,6 +303,38 @@ public final class GoPluginManager {
 		} catch (RuntimeException exception) {
 			disable(plugin, operation + " failed", exception);
 		}
+	}
+
+	/**
+	 * Invokes every decision handler and denies the event when at least one plugin
+	 * explicitly returns false. Missing handlers and failed calls are fail-open so
+	 * an optional bridge callback cannot accidentally freeze normal gameplay.
+	 */
+	private boolean decide(Protocol.Operation operation, Object event, MinecraftServer server) {
+		boolean allowed = true;
+		for (LoadedPlugin plugin : runningPlugins()) {
+			try {
+				PluginResponse response = plugin.invoke(operation, event);
+				processResponse(plugin, response, server, 0);
+				if (response.isError()) {
+					continue;
+				}
+				JsonElement decision = response.data();
+				if (decision == null || decision.isJsonNull()) {
+					continue;
+				}
+				if (!decision.isJsonPrimitive() || !decision.getAsJsonPrimitive().isBoolean()) {
+					bridgeLog(plugin, "warn", operation + " returned a non-boolean decision; allowing event");
+					continue;
+				}
+				if (!decision.getAsBoolean()) {
+					allowed = false;
+				}
+			} catch (RuntimeException exception) {
+				disable(plugin, operation + " failed", exception);
+			}
+		}
+		return allowed;
 	}
 
 	private void processResponse(

@@ -8,6 +8,14 @@ plugins {
 group = project.maven_group
 version = project.mod_version
 
+subprojects {
+	plugins.withId('java') {
+		tasks.named('processResources') {
+			from(rootProject.file('icon.png'))
+		}
+	}
+}
+
 tasks.named('build') {
 	dependsOn ':mc1211:build', ':mc2612:build', ':paper:build'
 }

@@ -13,6 +13,7 @@ public record PluginMetadata(
 		String website,
 		int apiVersion,
 		JsonObject configSchema,
+		boolean configWritable,
 		PluginEnvironment environment
 ) {
 	public PluginMetadata {
@@ -33,6 +34,21 @@ public record PluginMetadata(
 			int apiVersion,
 			JsonObject configSchema
 	) {
-		this(id, name, version, description, authors, website, apiVersion, configSchema, PluginEnvironment.SERVER);
+		this(id, name, version, description, authors, website, apiVersion, configSchema, false, PluginEnvironment.SERVER);
+	}
+
+	/** Source-compatible constructor for metadata created before writable configs. */
+	public PluginMetadata(
+			String id,
+			String name,
+			String version,
+			String description,
+			List<String> authors,
+			String website,
+			int apiVersion,
+			JsonObject configSchema,
+			PluginEnvironment environment
+	) {
+		this(id, name, version, description, authors, website, apiVersion, configSchema, false, environment);
 	}
 }

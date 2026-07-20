@@ -76,6 +76,17 @@ public final class LoadedPlugin {
 		return this.metadata;
 	}
 
+	/** Replaces the mutable configuration snapshot without changing metadata identity. */
+	public synchronized void configSnapshot(JsonObject config) {
+		if (this.metadata.configSchema() == null || config == null) {
+			return;
+		}
+		this.metadata.configSchema().asMap().clear();
+		for (var entry : config.entrySet()) {
+			this.metadata.configSchema().add(entry.getKey(), entry.getValue().deepCopy());
+		}
+	}
+
 	public synchronized PluginState state() {
 		return this.state;
 	}

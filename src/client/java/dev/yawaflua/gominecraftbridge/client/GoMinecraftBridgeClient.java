@@ -1,7 +1,10 @@
 package dev.yawaflua.gominecraftbridge.client;
 
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
+import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
+import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.network.AdminRequestPayload;
 import dev.yawaflua.gominecraftbridge.network.AdminResponsePayload;
 import dev.yawaflua.gominecraftbridge.protocol.ProtocolJson;
@@ -10,6 +13,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.Minecraft;
 import org.slf4j.LoggerFactory;
 
 public final class GoMinecraftBridgeClient implements ClientModInitializer {
@@ -30,7 +34,8 @@ public final class GoMinecraftBridgeClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		CLIENT_PLUGINS.discover();
-		ClientLifecycleEvents.CLIENT_STARTED.register(CLIENT_PLUGINS::start);
+		CLIENT_PLUGINS.start(Minecraft.getInstance());
+		ClientHudRendering.register(CLIENT_PLUGINS.hud());
 		ClientTickEvents.END_CLIENT_TICK.register(CLIENT_PLUGINS::tick);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(CLIENT_PLUGINS::stop);
 
@@ -79,6 +84,21 @@ public final class GoMinecraftBridgeClient implements ClientModInitializer {
 	public static void requestLocalReload(String pluginId) {
 		CLIENT_PLUGINS.reload(pluginId, net.minecraft.client.Minecraft.getInstance());
 		notifyUpdate();
+	}
+
+	public static ManagedPluginSnapshot localPlugin(String pluginId) {
+		return localPlugins().plugins().stream()
+				.filter(plugin -> plugin.metadata().id().equals(pluginId))
+				.findFirst()
+				.orElse(null);
+	}
+
+	public static ReloadResult updateLocalConfig(String pluginId, JsonObject config) {
+		ReloadResult result = CLIENT_PLUGINS.updateConfig(
+				pluginId, config, net.minecraft.client.Minecraft.getInstance()
+		);
+		notifyUpdate();
+		return result;
 	}
 
 	public static ConnectionStatus connectionStatus() {

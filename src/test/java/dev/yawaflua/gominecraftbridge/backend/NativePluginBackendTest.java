@@ -1,9 +1,12 @@
 package dev.yawaflua.gominecraftbridge.backend;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import dev.yawaflua.gominecraftbridge.backend.nativeffi.NativePluginBackend;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ConfigUpdateEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
 import dev.yawaflua.gominecraftbridge.protocol.PluginResponse;
 import dev.yawaflua.gominecraftbridge.protocol.Protocol;
@@ -29,6 +32,22 @@ final class NativePluginBackendTest {
 		assertEquals("hello_native", plugin.metadata().id());
 		assertEquals(Protocol.ABI_VERSION, plugin.metadata().apiVersion());
 		assertEquals(PluginEnvironment.BOTH, plugin.metadata().environment());
+		assertEquals(true, plugin.metadata().configWritable());
+
+		JsonObject config = new JsonObject();
+		config.addProperty("greeting", "Configured through Java");
+		config.addProperty("enabled", true);
+		config.addProperty("repeatTicks", 600);
+		config.add("favoriteTags", new JsonArray());
+		PluginResponse configUpdate = plugin.invoke(
+				Protocol.Operation.CONFIG_UPDATE,
+				new ConfigUpdateEvent(config)
+		);
+		assertEquals("ok", configUpdate.status());
+		assertEquals(
+				"Configured through Java",
+				configUpdate.data().getAsJsonObject().get("greeting").getAsString()
+		);
 
 		PluginResponse response = plugin.invoke(
 				Protocol.Operation.CHAT,

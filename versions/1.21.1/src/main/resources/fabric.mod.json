@@ -1,12 +1,14 @@
 {
   "schemaVersion": 1,
   "id": "go_minecraft_bridge",
+  "icon": "icon.png",
   "version": "${version}",
   "name": "Go Minecraft Bridge",
   "description": "A native Go plugin host with server and client runtimes.",
   "authors": ["yawaflua"],
   "license": "All-Rights-Reserved",
   "environment": "*",
+  "mixins": ["go-minecraft-bridge.client.mixins.json"],
   "entrypoints": {
     "main": ["dev.yawaflua.gominecraftbridge.GoMinecraftBridgeMod"],
     "client": ["dev.yawaflua.gominecraftbridge.client.GoMinecraftBridgeClient"],

@@ -37,6 +37,16 @@ panics are represented in the JSON response rather than the C status.
 | 6 | system call result | `SystemCallResult` |
 | 7 | deinit | `DeinitEvent` |
 | 8 | client tick | `ClientTickEvent` |
+| 9 | config update | `ConfigUpdateEvent` |
+| 10 | allow damage | `AllowDamageEvent`; boolean decision in response `data` |
+| 11 | after damage | `AfterDamageEvent` |
+| 12 | allow death | `AllowDeathEvent`; boolean decision in response `data` |
+| 13 | mob conversion | `MobConversionEvent` |
+
+Operations 10 and 12 are synchronous Fabric decisions. A plugin that does not
+implement the matching handler returns `true` automatically. Handler errors,
+panics, malformed decisions, and transport failures are also fail-open; an
+event is denied when at least one successfully invoked plugin returns `false`.
 
 Every successful transport response uses this envelope:
 
@@ -65,6 +75,21 @@ compiled against ABI v1 is rejected by an ABI v2 host before initialization.
 
 All memory ownership stays on its allocating side. Java objects, Go pointers,
 and Go structs never cross the boundary.
+
+## Native plugin configuration
+
+A client or `both` plugin can expose a pointer to a JSON-serializable Go struct
+through `Metadata.ConfigSchema`. The SDK marks pointer-backed values as writable.
+Go Minecraft Bridge then creates a configure button for the emulated native mod
+entry, converts its fields to Cloth Config entries, and sends the complete value
+through operation 9 whenever the screen is saved. The SDK unmarshals the value
+into the original pointer before calling the optional `ConfigUpdated` callback.
+
+Accepted values are persisted under
+`config/go-minecraft-bridge/client-data/<plugin-id>/config.json` and restored
+before `Init`. A map containing JSON Schema can still be exposed, but it must be
+paired with `ConfigUpdateHandler` because a schema map is not itself the target
+configuration object.
 
 ## Plugin environment metadata
 

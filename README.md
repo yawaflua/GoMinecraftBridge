@@ -21,7 +21,8 @@ The current MVP also targets:
 
 - Go 1.24 or newer;
 - native Go plugins built with `-buildmode=c-shared`;
-- initialization, server/client tick, chat, death, system-call-result, and deinitialization callbacks;
+- initialization, server/client tick, chat, living-entity damage/death/conversion,
+  system-call-result, and deinitialization callbacks;
 - entity snapshots and explicit subscriptions to block positions;
 - chat broadcast/direct-message actions;
 - extensible namespaced system calls;
@@ -132,9 +133,34 @@ under `config/go-minecraft-bridge/data/<plugin-id>`.
 
 The client runtime emits `Init`, `ClientTick`, and `Deinit`, captures plugin
 logs, supports local rescan/reload, and permits only the local
-`minecraft:client.chat.display` action. Server actions, snapshot subscriptions,
+`minecraft:client.chat.display` and retained `minecraft:client.hud.set` actions.
+The HUD action supports text and filled rectangles in GUI-scaled pixels, with
+screen anchors and ARGB colors. Server actions, snapshot subscriptions,
 and system calls are rejected in a client process, so a client plugin cannot use
 the bridge to bypass a remote server's permissions.
+
+A client plugin can replace its HUD scene from any callback. It remains visible
+until replaced, cleared, or the plugin stops:
+
+```go
+ctx.SetHUD(
+    sdk.HUDRectangle(8, 8, 120, 18, 0x90000000, sdk.HUDTopLeft),
+    sdk.HUDText("Go HUD", 14, 13, 0xffffffff, true, sdk.HUDTopLeft),
+)
+// ctx.ClearHUD()
+```
+
+Individual elements use plugin-local IDs and can be updated, removed, or given
+a lifetime without replacing the rest of the scene:
+
+```go
+notice := sdk.HUDText("Saved", 8, 8, 0xffffffff, true, sdk.HUDTopRight).
+    Named("save-notice").
+    Temporary(3 * time.Second)
+
+ctx.RenderHUD(notice)          // create or update by ID
+ctx.RemoveHUD("save-notice") // remove immediately
+```
 
 Native access must be enabled for the unnamed Java module:
 
@@ -160,6 +186,13 @@ packages and, when supported by the connected server, server packages. It provid
 - the latest retained bridge/SDK/stdout/stderr logs;
 - a package rescan that can discover and initialize newly added libraries;
 - a logical plugin reload (`Deinit → Init`), including recovery from a disabled state.
+
+Client native plugins are also represented as individual entries in Mod Menu.
+When a plugin exposes a writable Go configuration struct, its own **Configure**
+button opens a generated Cloth Config screen. Boolean, string, integer, floating
+point, primitive-list, and nested struct fields are supported. Saved values are
+delivered to the live Go plugin and persisted in
+`client-data/<plugin-id>/config.json`.
 
 Local client package inspection, logs, rescan, and lifecycle reload do not need
 server permission. Server information and controls still require a player from
@@ -212,9 +245,30 @@ Build it normally:
 go build -buildmode=c-shared -o dist/my_plugin.so .
 ```
 
-It implements only the callbacks it needs:
+It implements only the callbacks it needs. Configuration is an ordinary pointer
+to a Go struct; the SDK updates it before invoking `ConfigUpdated`:
 
 ```go
+type config struct {
+    Greeting string `json:"greeting"`
+    Enabled  bool   `json:"enabled"`
+}
+
+var cfg = &config{Greeting: "Hello from Go", Enabled: true}
+
+func (myPlugin) Metadata() sdk.Metadata {
+    return sdk.Metadata{
+        ID: "my_plugin", Name: "My plugin", Version: "1.0.0",
+        Environment: sdk.PluginEnvironmentClient,
+        ConfigSchema: cfg,
+    }
+}
+
+func (myPlugin) ConfigUpdated(ctx *sdk.Context, event sdk.ConfigUpdateEvent) error {
+    // cfg already contains the values saved in Cloth Config.
+    return nil
+}
+
 func (myPlugin) Tick(ctx *sdk.Context, snapshot sdk.ServerSnapshot) error {
     for _, entity := range snapshot.Entities {
         // Read the immutable snapshot.
