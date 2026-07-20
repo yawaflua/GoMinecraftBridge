@@ -46,7 +46,8 @@ public final class GoPluginManager {
 	private final ActionExecutor actions = new ActionExecutor();
 	private final Map<String, LoadedPlugin> plugins = new LinkedHashMap<>();
 	private final List<PackageInspection> packageInspections = new ArrayList<>();
-	private boolean serverRunning;
+	/** Lifecycle flag is read by the networking/admin thread as well as the server thread. */
+	private volatile boolean serverRunning;
 
 	public GoPluginManager(Logger logger) {
 		this.logger = logger;
@@ -55,7 +56,18 @@ public final class GoPluginManager {
 		this.dataDirectory = root.resolve("data");
 	}
 
-	public void discover() {
+	public synchronized void discover() {
+		scanCandidates(null);
+	}
+
+	public synchronized ReloadResult rescan(MinecraftServer server) {
+		int before = this.plugins.size();
+		scanCandidates(server);
+		int added = this.plugins.size() - before;
+		return new ReloadResult(true, "Package check completed; new plugins: " + added);
+	}
+
+	private void scanCandidates(MinecraftServer server) {
 		this.packageInspections.clear();
 		try {
 			Files.createDirectories(this.pluginDirectory);
@@ -66,6 +78,18 @@ public final class GoPluginManager {
 
 		for (Path candidate : nativeCandidates()) {
 			try {
+				Path normalized = candidate.toAbsolutePath().normalize();
+				LoadedPlugin alreadyLoaded = this.plugins.values().stream()
+						.filter(plugin -> plugin.backend().origin().equals(normalized))
+						.findFirst()
+						.orElse(null);
+				if (alreadyLoaded != null) {
+					this.packageInspections.add(new PackageInspection(
+							normalized.toString(), true, alreadyLoaded.metadata().id(), null
+					));
+					continue;
+				}
+
 				LoadedPlugin plugin = new LoadedPlugin(new NativePluginBackend(candidate));
 				LoadedPlugin duplicate = this.plugins.putIfAbsent(plugin.metadata().id(), plugin);
 				if (duplicate != null) {
@@ -85,6 +109,9 @@ public final class GoPluginManager {
 						plugin.metadata().version(),
 						candidate.getFileName()
 				);
+				if (server != null && this.serverRunning) {
+					startPlugin(plugin, server);
+				}
 			} catch (RuntimeException exception) {
 				this.packageInspections.add(new PackageInspection(
 						candidate.toAbsolutePath().normalize().toString(),
@@ -97,33 +124,33 @@ public final class GoPluginManager {
 		}
 	}
 
-	public void start(MinecraftServer server) {
+	public synchronized void start(MinecraftServer server) {
 		this.serverRunning = true;
 		for (LoadedPlugin plugin : this.plugins.values()) {
 			startPlugin(plugin, server);
 		}
 	}
 
-	public void tick(MinecraftServer server) {
+	public synchronized void tick(MinecraftServer server) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			ServerSnapshot snapshot = this.snapshots.create(server, plugin.snapshotSubscription());
 			invoke(plugin, Protocol.Operation.TICK, snapshot, server);
 		}
 	}
 
-	public void chat(ChatEvent event, MinecraftServer server) {
+	public synchronized void chat(ChatEvent event, MinecraftServer server) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			invoke(plugin, Protocol.Operation.CHAT, event, server);
 		}
 	}
 
-	public void death(DeathEvent event, MinecraftServer server) {
+	public synchronized void death(DeathEvent event, MinecraftServer server) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			invoke(plugin, Protocol.Operation.DEATH, event, server);
 		}
 	}
 
-	public void stop(MinecraftServer server) {
+	public synchronized void stop(MinecraftServer server) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			try {
 				PluginResponse response = plugin.invoke(
@@ -141,8 +168,19 @@ public final class GoPluginManager {
 		this.serverRunning = false;
 	}
 
-	public List<LoadedPlugin> plugins() {
+	public synchronized List<LoadedPlugin> plugins() {
 		return List.copyOf(this.plugins.values());
+	}
+
+	/** Returns the latest package validation results as an immutable snapshot. */
+	public synchronized List<PackageInspection> packageInspections() {
+		return List.copyOf(this.packageInspections);
+	}
+
+	/** Returns a point-in-time copy of a plugin's retained logs, or an empty list when unknown. */
+	public synchronized List<PluginLog> pluginLogs(String pluginId) {
+		LoadedPlugin plugin = this.plugins.get(pluginId);
+		return plugin == null ? List.of() : plugin.logs();
 	}
 
 	public synchronized BridgeManagementSnapshot managementSnapshot(boolean canReload, String message) {
