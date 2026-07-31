@@ -1,5 +1,5 @@
 {
-  "name": "bridgemods-frontend",
+  "name": "gbm-frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -11,6 +11,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "dompurify": "^3.4.12",
+    "marked": "^18.0.7",
     "svelte": "latest"
   },
   "devDependencies": {
