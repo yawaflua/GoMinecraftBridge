@@ -17,8 +17,8 @@ import java.util.logging.Logger;
 
 /** Fabric custom-payload compatible management bridge exposed by Paper/Purpur. */
 final class PaperAdminMessaging implements PluginMessageListener {
-	static final String REQUEST_CHANNEL = "go_minecraft_bridge:admin_request";
-	static final String RESPONSE_CHANNEL = "go_minecraft_bridge:admin_response";
+	static final String REQUEST_CHANNEL = "gbm:admin_request";
+	static final String RESPONSE_CHANNEL = "gbm:admin_response";
 	private static final int MAX_PLUGIN_MESSAGE_BYTES = 30_000;
 
 	private final Plugin owner;
@@ -58,7 +58,7 @@ final class PaperAdminMessaging implements PluginMessageListener {
 			send(player, this.plugins.managementSnapshot(responseMessage));
 		} catch (RuntimeException exception) {
 			this.logger.log(Level.WARNING,
-					"Rejected malformed Go Minecraft Bridge management payload from " + player.getName(), exception);
+					"Rejected malformed GBM management payload from " + player.getName(), exception);
 		}
 	}
 
@@ -123,7 +123,7 @@ final class PaperAdminMessaging implements PluginMessageListener {
 		}
 		return ProtocolJson.GSON.toJson(new BridgeManagementSnapshot(
 				snapshot.generatedAtUnixMilli(), snapshot.serverRunning(), snapshot.canReload(),
-				"Management data exceeded the Paper plugin-message limit; use /gmb for full details",
+				"Management data exceeded the Paper plugin-message limit; use /gbm for full details",
 				List.of(), List.of()
 		));
 	}

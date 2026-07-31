@@ -2,6 +2,7 @@ package dev.yawaflua.gominecraftbridge.client;
 
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
+import com.terraformersmc.modmenu.api.UpdateChecker;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.util.Map;
@@ -22,6 +23,12 @@ public final class GoBridgeModMenuIntegration implements ModMenuApi {
 		if (!FabricLoader.getInstance().isModLoaded("cloth-config")) {
 			return Map.of();
 		}
-		return NativeModMenuEntries.configScreenFactories();
+		var runtime = GoMinecraftBridgeClient.runtime();
+		return runtime.modMenu().configScreenFactories(runtime.localPlugins().plugins());
+	}
+
+	@Override
+	public Map<String, UpdateChecker> getProvidedUpdateCheckers() {
+		return GoMinecraftBridgeClient.runtime().modMenu().updateCheckers();
 	}
 }

@@ -80,13 +80,13 @@ and Go structs never cross the boundary.
 
 A client or `both` plugin can expose a pointer to a JSON-serializable Go struct
 through `Metadata.ConfigSchema`. The SDK marks pointer-backed values as writable.
-Go Minecraft Bridge then creates a configure button for the emulated native mod
+GBM then creates a configure button for the emulated native mod
 entry, converts its fields to Cloth Config entries, and sends the complete value
 through operation 9 whenever the screen is saved. The SDK unmarshals the value
 into the original pointer before calling the optional `ConfigUpdated` callback.
 
 Accepted values are persisted under
-`config/go-minecraft-bridge/client-data/<plugin-id>/config.json` and restored
+`config/gbm/client-data/<plugin-id>/config.json` and restored
 before `Init`. A map containing JSON Schema can still be exposed, but it must be
 paired with `ConfigUpdateHandler` because a schema map is not itself the target
 configuration object.
@@ -99,9 +99,9 @@ hosts execute `client` and `both` plugins. Metadata without this field predates
 the declaration and is treated as `server`, so adding it does not change ABI v2.
 
 Client libraries are loaded from
-`config/go-minecraft-bridge/client-plugins`; their persistent data is isolated
-under `config/go-minecraft-bridge/client-data/<plugin-id>`. They start even when
-the connected server does not have Go Minecraft Bridge installed. The client
+`config/gbm/client-plugins`; their persistent data is isolated under
+`config/gbm/client-data/<plugin-id>`. They start even when the connected server
+does not have GBM installed. The client
 tick JSON contains the tick number, connection state, remote address, local
 player UUID/name, and current dimension; world-dependent strings are absent
 outside a world.
@@ -114,7 +114,7 @@ it (`server` or `client`).
 
 The Paper/Purpur host implements the server side of the same ABI without a
 separate Go SDK. Native packages are discovered under
-`plugins/GoMinecraftBridge/go-plugins`, and receive `runtimeEnvironment=server`.
+`plugins/GBM/plugins`, and receive `runtimeEnvironment=server`.
 The public Bukkit/Paper API supplies entity/block snapshots, actions, and the
 built-in Minecraft system calls, so native plugin binaries can be moved between
 Fabric, Paper, and Purpur servers without recompilation when the operating

@@ -1,121 +1,92 @@
 package dev.yawaflua.gominecraftbridge.client;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonNull;
-import dev.yawaflua.gominecraftbridge.backend.nativeffi.NativePluginBackend;
 import dev.yawaflua.gominecraftbridge.compat.MinecraftVersionAdapter;
+import dev.yawaflua.gominecraftbridge.client.plugin.ClientPluginConfigStore;
+import dev.yawaflua.gominecraftbridge.client.plugin.ClientPluginResponseHandler;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
+import dev.yawaflua.gominecraftbridge.host.NativePackageScanner;
+import dev.yawaflua.gominecraftbridge.host.NativePluginRegistry;
 import dev.yawaflua.gominecraftbridge.host.PluginState;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
-import dev.yawaflua.gominecraftbridge.management.PackageInspection;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
-import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ConfigUpdateEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
 import dev.yawaflua.gominecraftbridge.protocol.InitEvent;
-import dev.yawaflua.gominecraftbridge.protocol.HudScene;
 import dev.yawaflua.gominecraftbridge.protocol.PluginEnvironment;
-import dev.yawaflua.gominecraftbridge.protocol.PluginLog;
 import dev.yawaflua.gominecraftbridge.protocol.PluginResponse;
 import dev.yawaflua.gominecraftbridge.protocol.Protocol;
-import dev.yawaflua.gominecraftbridge.protocol.ProtocolJson;
-import dev.yawaflua.gominecraftbridge.protocol.SystemCallRequest;
-import dev.yawaflua.gominecraftbridge.protocol.SystemCallResult;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * Client-process native host. It intentionally has its own package and data
  * directories and never delegates actions or system calls to a remote server.
  */
 public final class ClientGoPluginManager {
-	private static final int MAX_SYSTEM_CALL_CHAIN = 32;
-
 	private final Logger logger;
-	private final Path pluginDirectory;
-	private final Path dataDirectory;
-	private final Map<String, LoadedPlugin> plugins = new LinkedHashMap<>();
-	private final List<PackageInspection> packageInspections = new ArrayList<>();
+	private final Path legacyPluginDirectory;
+	private final Path managedPluginDirectory;
+	private final NativePluginRegistry registry;
+	private final ClientPluginConfigStore configStore;
 	private final ClientHudState hud = new ClientHudState();
+	private final ClientPluginResponseHandler responses;
 	private long tick;
 	private boolean running;
 
 	public ClientGoPluginManager(Logger logger) {
 		this.logger = logger;
-		Path root = FabricLoader.getInstance().getConfigDir().resolve("go-minecraft-bridge");
-		this.pluginDirectory = root.resolve("client-plugins");
-		this.dataDirectory = root.resolve("client-data");
+		Path config = FabricLoader.getInstance().getConfigDir();
+		Path root = config.resolve("gbm");
+		this.legacyPluginDirectory = config.resolve("go-minecraft-bridge").resolve("client-plugins");
+		this.managedPluginDirectory = root.resolve("client-plugins");
+		this.configStore = new ClientPluginConfigStore(root.resolve("client-data"));
+		this.responses = new ClientPluginResponseHandler(logger, this.hud);
+		this.registry = new NativePluginRegistry(new NativePackageScanner(List.of(
+				new NativePackageScanner.SearchRoot(this.legacyPluginDirectory, true),
+				new NativePackageScanner.SearchRoot(this.managedPluginDirectory, true)
+		)));
 	}
 
 	public synchronized void discover() {
-		this.packageInspections.clear();
 		try {
-			Files.createDirectories(this.pluginDirectory);
-			Files.createDirectories(this.dataDirectory);
+			Files.createDirectories(this.legacyPluginDirectory);
+			Files.createDirectories(this.managedPluginDirectory);
+			this.configStore.initialize();
 		} catch (IOException exception) {
 			throw new IllegalStateException("Cannot create client Go plugin directories", exception);
 		}
 
-		for (Path candidate : nativeCandidates()) {
-			Path normalized = candidate.toAbsolutePath().normalize();
-			try {
-				LoadedPlugin existing = this.plugins.values().stream()
-						.filter(plugin -> plugin.backend().origin().equals(normalized))
-						.findFirst()
-						.orElse(null);
-				if (existing != null) {
-					this.packageInspections.add(new PackageInspection(
-							normalized.toString(), true, existing.metadata().id(), null
-					));
-					continue;
-				}
-
-				LoadedPlugin plugin = new LoadedPlugin(new NativePluginBackend(candidate));
-				if (!plugin.metadata().environment().supportsClient()) {
-					this.packageInspections.add(new PackageInspection(
-							normalized.toString(), true, plugin.metadata().id(), null
-					));
-					this.logger.info(
-							"Skipping server-only Go plugin {} in the client runtime",
-							plugin.metadata().id()
-					);
-					continue;
-				}
-				if (this.plugins.putIfAbsent(plugin.metadata().id(), plugin) != null) {
-					throw new IllegalArgumentException("Duplicate client plugin id " + plugin.metadata().id());
-				}
-				this.packageInspections.add(new PackageInspection(
-						normalized.toString(), true, plugin.metadata().id(), null
-				));
-				bridgeLog(plugin, "info", "Client package check passed: " + normalized);
-				this.logger.info(
-						"Discovered client Go plugin {} {} from {}",
-						plugin.metadata().name(), plugin.metadata().version(), candidate.getFileName()
-				);
-				if (this.running) {
-					startPlugin(plugin);
-				}
-			} catch (RuntimeException exception) {
-				this.packageInspections.add(new PackageInspection(
-						normalized.toString(), false, null, rootMessage(exception)
-				));
-				this.logger.error("Cannot load client Go plugin {}", candidate, exception);
+		NativePluginRegistry.DiscoveryReport report = this.registry.discover(
+				metadata -> metadata.environment().supportsClient()
+		);
+		for (NativePluginRegistry.SkippedPlugin skipped : report.skipped()) {
+			this.logger.info("Skipping server-only GBM plugin {}", skipped.plugin().metadata().id());
+		}
+		for (NativePluginRegistry.PackageFailure failure : report.failures()) {
+			this.logger.error("Cannot load client GBM plugin {}", failure.path(), failure.cause());
+		}
+		for (NativePackageScanner.ScanFailure failure : report.scanFailures()) {
+			this.logger.error("Cannot scan client plugin directory {}", failure.root(), failure.cause());
+		}
+		for (LoadedPlugin plugin : report.discovered()) {
+			this.responses.bridgeLog(plugin, "info", "Client package check passed: " + plugin.backend().origin());
+			this.logger.info(
+					"Discovered client GBM plugin {} {} from {}",
+					plugin.metadata().name(), plugin.metadata().version(), plugin.backend().origin().getFileName()
+			);
+			if (this.running) {
+				startPlugin(plugin);
 			}
 		}
 	}
@@ -125,7 +96,7 @@ public final class ClientGoPluginManager {
 			return;
 		}
 		this.running = true;
-		for (LoadedPlugin plugin : this.plugins.values()) {
+		for (LoadedPlugin plugin : this.registry.plugins()) {
 			startPlugin(plugin);
 		}
 	}
@@ -134,7 +105,7 @@ public final class ClientGoPluginManager {
 		this.tick++;
 		this.hud.pruneExpired();
 		for (LoadedPlugin plugin : runningPlugins()) {
-			invoke(plugin, Protocol.Operation.CLIENT_TICK, createTick(client), client);
+			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TICK, createTick(client), client);
 		}
 	}
 
@@ -145,9 +116,9 @@ public final class ClientGoPluginManager {
 						Protocol.Operation.DEINIT,
 						new DeinitEvent("client_stopping")
 				);
-				processResponse(plugin, response, client, 0);
+				this.responses.process(plugin, response, client);
 			} catch (RuntimeException exception) {
-				bridgeLog(plugin, "error", "Client deinit failed: " + rootMessage(exception));
+				this.responses.bridgeLog(plugin, "error", "Client deinit failed: " + ClientPluginResponseHandler.rootMessage(exception));
 				this.logger.error("Client Go plugin {} failed during deinit", plugin.metadata().id(), exception);
 			} finally {
 				this.hud.clear(plugin.metadata().id());
@@ -158,23 +129,24 @@ public final class ClientGoPluginManager {
 	}
 
 	public synchronized ReloadResult rescan() {
-		int before = this.plugins.size();
+		int before = this.registry.plugins().size();
 		discover();
-		return new ReloadResult(true, "Client package check completed; new plugins: " + (this.plugins.size() - before));
+		return new ReloadResult(true, "Client package check completed; new plugins: "
+				+ (this.registry.plugins().size() - before));
 	}
 
 	public synchronized ReloadResult reload(String pluginId, Minecraft client) {
-		LoadedPlugin plugin = this.plugins.get(pluginId);
+		LoadedPlugin plugin = this.registry.plugin(pluginId);
 		if (plugin == null) {
 			return new ReloadResult(false, "Unknown client plugin: " + pluginId);
 		}
 		if (plugin.state() == PluginState.RUNNING) {
 			try {
-				processResponse(plugin, plugin.invoke(
+				this.responses.process(plugin, plugin.invoke(
 						Protocol.Operation.DEINIT, new DeinitEvent("client_admin_reload")
-				), client, 0);
+				), client);
 			} catch (RuntimeException exception) {
-				bridgeLog(plugin, "error", "Client reload deinit failed: " + rootMessage(exception));
+				this.responses.bridgeLog(plugin, "error", "Client reload deinit failed: " + ClientPluginResponseHandler.rootMessage(exception));
 			}
 		}
 		this.hud.clear(pluginId);
@@ -186,7 +158,7 @@ public final class ClientGoPluginManager {
 	}
 
 	public synchronized ReloadResult updateConfig(String pluginId, JsonElement submitted, Minecraft client) {
-		LoadedPlugin plugin = this.plugins.get(pluginId);
+		LoadedPlugin plugin = this.registry.plugin(pluginId);
 		if (plugin == null) {
 			return new ReloadResult(false, "Unknown client plugin: " + pluginId);
 		}
@@ -202,7 +174,7 @@ public final class ClientGoPluginManager {
 					Protocol.Operation.CONFIG_UPDATE,
 					new ConfigUpdateEvent(submitted.getAsJsonObject())
 			);
-			processResponse(plugin, response, client, 0);
+			this.responses.process(plugin, response, client);
 			if (response.isError()) {
 				return new ReloadResult(false, "Plugin rejected the configuration: " + response.error());
 			}
@@ -212,17 +184,17 @@ public final class ClientGoPluginManager {
 					? accepted.getAsJsonObject()
 					: submitted.getAsJsonObject();
 			plugin.configSnapshot(snapshot);
-			writeSavedConfig(pluginId, snapshot);
-			bridgeLog(plugin, "info", "Configuration updated from Cloth Config");
+			this.configStore.write(pluginId, snapshot);
+			this.responses.bridgeLog(plugin, "info", "Configuration updated from Cloth Config");
 			return new ReloadResult(true, "Plugin " + pluginId + " configuration updated");
 		} catch (RuntimeException | IOException exception) {
-			bridgeLog(plugin, "error", "Configuration update failed: " + rootMessage(exception));
-			return new ReloadResult(false, "Cannot update plugin configuration: " + rootMessage(exception));
+			this.responses.bridgeLog(plugin, "error", "Configuration update failed: " + ClientPluginResponseHandler.rootMessage(exception));
+			return new ReloadResult(false, "Cannot update plugin configuration: " + ClientPluginResponseHandler.rootMessage(exception));
 		}
 	}
 
 	public synchronized BridgeManagementSnapshot managementSnapshot(String message) {
-		List<ManagedPluginSnapshot> snapshots = this.plugins.values().stream()
+		List<ManagedPluginSnapshot> snapshots = this.registry.plugins().stream()
 				.map(plugin -> new ManagedPluginSnapshot(
 						plugin.metadata(),
 						plugin.state().name().toLowerCase(Locale.ROOT),
@@ -233,7 +205,7 @@ public final class ClientGoPluginManager {
 				.toList();
 		return new BridgeManagementSnapshot(
 				Instant.now().toEpochMilli(), this.running, this.running, message,
-				List.copyOf(this.packageInspections), snapshots
+				this.registry.inspections(), snapshots
 		);
 	}
 
@@ -243,9 +215,8 @@ public final class ClientGoPluginManager {
 
 	private boolean startPlugin(LoadedPlugin plugin) {
 		try {
-			Path pluginData = this.dataDirectory.resolve(plugin.metadata().id());
-			Files.createDirectories(pluginData);
-			loadSavedConfig(plugin, pluginData, Minecraft.getInstance());
+			Path pluginData = this.configStore.dataDirectory(plugin.metadata().id());
+			loadSavedConfig(plugin, Minecraft.getInstance());
 			PluginResponse response = plugin.invoke(
 					Protocol.Operation.INIT,
 					new InitEvent(
@@ -255,62 +226,45 @@ public final class ClientGoPluginManager {
 							PluginEnvironment.CLIENT
 					)
 			);
-			processResponse(plugin, response, Minecraft.getInstance(), 0);
+			this.responses.process(plugin, response, Minecraft.getInstance());
 			if (response.isError()) {
 				plugin.disable();
-				bridgeLog(plugin, "error", "Client initialization failed: " + response.error());
+				this.responses.bridgeLog(plugin, "error", "Client initialization failed: " + response.error());
 				return false;
 			}
 			plugin.markRunning();
-			bridgeLog(plugin, "info", "Client plugin started");
+			this.responses.bridgeLog(plugin, "info", "Client plugin started");
 			return true;
 		} catch (Exception exception) {
-			disable(plugin, "client initialization failed", exception);
+			this.responses.disable(plugin, "client initialization failed", exception);
 			return false;
 		}
 	}
 
-	private void loadSavedConfig(LoadedPlugin plugin, Path pluginData, Minecraft client) {
+	private void loadSavedConfig(LoadedPlugin plugin, Minecraft client) {
 		if (plugin.metadata().configSchema() == null || !plugin.metadata().configWritable()) {
 			return;
 		}
-		Path path = pluginData.resolve("config.json");
-		if (!Files.isRegularFile(path)) {
-			return;
-		}
 		try {
-			JsonElement saved = ProtocolJson.GSON.fromJson(Files.readString(path), JsonElement.class);
-			if (saved == null || !saved.isJsonObject()) {
-				throw new IllegalArgumentException("saved configuration is not a JSON object");
+			var saved = this.configStore.read(plugin.metadata().id());
+			if (saved == null) {
+				return;
 			}
 			PluginResponse response = plugin.invoke(
 					Protocol.Operation.CONFIG_UPDATE,
-					new ConfigUpdateEvent(saved.getAsJsonObject())
+					new ConfigUpdateEvent(saved)
 			);
-			processResponse(plugin, response, client, 0);
+			this.responses.process(plugin, response, client);
 			if (response.isError()) {
 				throw new IllegalArgumentException(response.error());
 			}
 			JsonElement accepted = response.data();
 			plugin.configSnapshot(accepted != null && accepted.isJsonObject()
 					? accepted.getAsJsonObject()
-					: saved.getAsJsonObject());
-			bridgeLog(plugin, "info", "Loaded saved configuration");
+					: saved);
+			this.responses.bridgeLog(plugin, "info", "Loaded saved configuration");
 		} catch (Exception exception) {
-			bridgeLog(plugin, "error", "Cannot load saved configuration: " + rootMessage(exception));
-		}
-	}
-
-	private void writeSavedConfig(String pluginId, JsonElement config) throws IOException {
-		Path pluginData = this.dataDirectory.resolve(pluginId);
-		Files.createDirectories(pluginData);
-		Path target = pluginData.resolve("config.json");
-		Path temporary = pluginData.resolve("config.json.tmp");
-		Files.writeString(temporary, ProtocolJson.GSON.toJson(config));
-		try {
-			Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-		} catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
-			Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+			this.responses.bridgeLog(plugin, "error", "Cannot load saved configuration: " + ClientPluginResponseHandler.rootMessage(exception));
 		}
 	}
 
@@ -328,178 +282,7 @@ public final class ClientGoPluginManager {
 		);
 	}
 
-	private void invoke(LoadedPlugin plugin, Protocol.Operation operation, Object input, Minecraft client) {
-		try {
-			processResponse(plugin, plugin.invoke(operation, input), client, 0);
-		} catch (RuntimeException exception) {
-			disable(plugin, operation + " failed", exception);
-		}
-	}
-
-	private void processResponse(
-			LoadedPlugin plugin,
-			PluginResponse response,
-			Minecraft client,
-			int systemCallDepth
-	) {
-		for (PluginLog log : response.logs()) {
-			writeLog(plugin, log);
-		}
-		if (response.snapshot() != null) {
-			bridgeLog(plugin, "warn", "Snapshot subscriptions are unavailable in the client runtime");
-		}
-		if (response.isPanic()) {
-			disable(plugin, "client callback panicked: " + response.error(), null);
-			return;
-		}
-		if (response.isError()) {
-			bridgeLog(plugin, "error", "Client callback returned an error: " + response.error());
-		}
-
-		for (ActionRequest action : response.actions()) {
-			executeAction(plugin, action, client);
-		}
-
-		if (response.systemCalls().isEmpty()) {
-			return;
-		}
-		if (systemCallDepth >= MAX_SYSTEM_CALL_CHAIN) {
-			disable(plugin, "client system call chain exceeded " + MAX_SYSTEM_CALL_CHAIN, null);
-			return;
-		}
-		for (SystemCallRequest request : response.systemCalls()) {
-			SystemCallResult unavailable = new SystemCallResult(
-					request.id(), request.name(), false, JsonNull.INSTANCE,
-					"System calls are unavailable in the client runtime"
-			);
-			try {
-				processResponse(plugin, plugin.invoke(
-						Protocol.Operation.SYSTEM_CALL_RESULT, unavailable
-				), client, systemCallDepth + 1);
-			} catch (RuntimeException exception) {
-				disable(plugin, "client system call result callback failed", exception);
-				return;
-			}
-		}
-	}
-
-	private void executeAction(LoadedPlugin plugin, ActionRequest action, Minecraft client) {
-		if ("minecraft:client.hud.set".equals(action.type())) {
-			try {
-				HudScene scene = ProtocolJson.GSON.fromJson(action.payload(), HudScene.class);
-				if (scene == null) {
-					throw new IllegalArgumentException("HUD scene is missing");
-				}
-				this.hud.replace(plugin.metadata().id(), scene);
-			} catch (RuntimeException exception) {
-				bridgeLog(plugin, "warn", "Rejected malformed HUD scene: " + rootMessage(exception));
-			}
-			return;
-		}
-		if ("minecraft:client.hud.upsert".equals(action.type())) {
-			try {
-				JsonElement rawElement = action.payload() == null ? null : action.payload().get("element");
-				var element = ProtocolJson.GSON.fromJson(rawElement, dev.yawaflua.gominecraftbridge.protocol.HudElementDto.class);
-				if (element == null) {
-					throw new IllegalArgumentException("HUD element is missing");
-				}
-				this.hud.upsert(plugin.metadata().id(), element);
-			} catch (RuntimeException exception) {
-				bridgeLog(plugin, "warn", "Rejected malformed HUD element: " + rootMessage(exception));
-			}
-			return;
-		}
-		if ("minecraft:client.hud.remove".equals(action.type())) {
-			JsonElement id = action.payload() == null ? null : action.payload().get("id");
-			if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
-				bridgeLog(plugin, "warn", "Rejected HUD removal without an element id");
-			} else {
-				this.hud.remove(plugin.metadata().id(), id.getAsString());
-			}
-			return;
-		}
-		if (!"minecraft:client.chat.display".equals(action.type())) {
-			bridgeLog(plugin, "warn", "Rejected action in client runtime: " + action.type());
-			return;
-		}
-		JsonElement message = action.payload() == null ? null : action.payload().get("message");
-		if (message == null || !message.isJsonPrimitive() || !message.getAsJsonPrimitive().isString()) {
-			bridgeLog(plugin, "warn", "Rejected malformed client chat display action");
-			return;
-		}
-		if (client.player == null) {
-			bridgeLog(plugin, "warn", "Cannot display client message outside a world");
-			return;
-		}
-		client.player.sendSystemMessage(Component.literal(message.getAsString()));
-	}
-
 	private List<LoadedPlugin> runningPlugins() {
-		return this.plugins.values().stream()
-				.filter(plugin -> plugin.state() == PluginState.RUNNING)
-				.toList();
-	}
-
-	private List<Path> nativeCandidates() {
-		if (!Files.isDirectory(this.pluginDirectory)) {
-			return List.of();
-		}
-		try (var files = Files.list(this.pluginDirectory)) {
-			return files
-					.filter(Files::isRegularFile)
-					.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(nativeExtension()))
-					.sorted(Comparator.comparing(Path::toString))
-					.toList();
-		} catch (IOException exception) {
-			this.logger.error("Cannot scan client plugin directory {}", this.pluginDirectory, exception);
-			return List.of();
-		}
-	}
-
-	private static String nativeExtension() {
-		String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-		if (os.contains("win")) {
-			return ".dll";
-		}
-		if (os.contains("mac")) {
-			return ".dylib";
-		}
-		return ".so";
-	}
-
-	private void disable(LoadedPlugin plugin, String reason, Throwable throwable) {
-		plugin.disable();
-		this.hud.clear(plugin.metadata().id());
-		bridgeLog(plugin, "error", "Plugin disabled: " + reason
-				+ (throwable == null ? "" : " — " + rootMessage(throwable)));
-		if (throwable == null) {
-			this.logger.error("Disabled client Go plugin {}: {}", plugin.metadata().id(), reason);
-		} else {
-			this.logger.error("Disabled client Go plugin {}: {}", plugin.metadata().id(), reason, throwable);
-		}
-	}
-
-	private void writeLog(LoadedPlugin plugin, PluginLog log) {
-		plugin.appendLog(log);
-		String message = "[Go/client/" + plugin.metadata().id() + "/" + log.stream() + "] " + log.message();
-		switch (log.level() == null ? "info" : log.level()) {
-			case "trace" -> this.logger.trace(message);
-			case "debug" -> this.logger.debug(message);
-			case "warn" -> this.logger.warn(message);
-			case "error" -> this.logger.error(message);
-			default -> this.logger.info(message);
-		}
-	}
-
-	private void bridgeLog(LoadedPlugin plugin, String level, String message) {
-		plugin.appendLog(new PluginLog("client-bridge", level, message, Instant.now().toEpochMilli()));
-	}
-
-	private static String rootMessage(Throwable throwable) {
-		Throwable current = throwable;
-		while (current.getCause() != null) {
-			current = current.getCause();
-		}
-		return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
+		return this.registry.runningPlugins();
 	}
 }

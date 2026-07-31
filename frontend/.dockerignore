@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.svelte-kit
+dist
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.local
+*.log

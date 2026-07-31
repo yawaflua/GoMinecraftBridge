@@ -36,6 +36,7 @@ type Metadata struct {
 	Description string   `json:"description,omitempty"`
 	Authors     []string `json:"authors,omitempty"`
 	Website     string   `json:"website,omitempty"`
+	License     string   `json:"license,omitempty"`
 	APIVersion  int      `json:"apiVersion"`
 	// ConfigSchema exposes the plugin's editable configuration to the client.
 	// A pointer to a JSON-serializable struct is updated in place when the user
@@ -183,9 +184,10 @@ type SystemCallType string
 
 const (
 	SystemCallServerInfo SystemCallType = "minecraft:server.info"
+	SystemCallKillEntity SystemCallType = "minecraft:entity.kill"
 	SystemCallPlayerGet  SystemCallType = "minecraft:player.get"
 	SystemCallBlockGet   SystemCallType = "minecraft:block.get"
-	SystemCallGetEntity  SystemCallType = "minecraft:get_entity"
+	SystemCallGetEntity  SystemCallType = "minecraft:entity.get"
 )
 
 // GetEntityRequest selects an entity by UUID or by its runtime ID.

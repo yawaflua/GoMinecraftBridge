@@ -25,6 +25,8 @@ def prepareMainSources = tasks.register('prepareMainSources', Sync) {
 		include 'dev/yawaflua/gominecraftbridge/management/**'
 		include 'dev/yawaflua/gominecraftbridge/protocol/**'
 		include 'dev/yawaflua/gominecraftbridge/host/LoadedPlugin.java'
+		include 'dev/yawaflua/gominecraftbridge/host/NativePackageScanner.java'
+		include 'dev/yawaflua/gominecraftbridge/host/NativePluginRegistry.java'
 		include 'dev/yawaflua/gominecraftbridge/host/PluginState.java'
 	}
 	from(sharedRoot.toPath().resolve('src/main/generated'))

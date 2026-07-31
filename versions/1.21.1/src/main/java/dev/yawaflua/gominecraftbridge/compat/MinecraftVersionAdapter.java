@@ -4,6 +4,7 @@ import net.minecraft.SharedConstants;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 
 /** Minecraft 1.21.1 implementation of the shared version adapter. */
@@ -25,5 +26,9 @@ public final class MinecraftVersionAdapter {
 
 	public static boolean isOperator(MinecraftServer server, ServerPlayer player) {
 		return server.getPlayerList().isOp(player.getGameProfile());
+	}
+
+	public static void kill(LivingEntity entity, ServerLevel level) {
+		entity.kill();
 	}
 }

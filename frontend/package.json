@@ -1,0 +1,29 @@
+{
+  "name": "bridgemods-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bunx --bun vite",
+    "build": "bunx --bun vite build",
+    "check": "bunx --bun svelte-check --tsconfig ./tsconfig.json",
+    "lint": "bunx --bun eslint .",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "svelte": "latest"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "latest",
+    "@tsconfig/svelte": "latest",
+    "@types/bun": "latest",
+    "@eslint/js": "latest",
+    "eslint": "latest",
+    "eslint-plugin-svelte": "latest",
+    "globals": "latest",
+    "svelte-check": "latest",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "latest",
+    "vite": "latest"
+  }
+}

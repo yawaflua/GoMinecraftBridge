@@ -22,11 +22,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@EnabledIfEnvironmentVariable(named = "GMB_TEST_LIBRARY", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "GBM_TEST_LIBRARY", matches = ".+")
 final class NativePluginBackendTest {
 	@Test
 	void loadsMetadataAndDispatchesChat() {
-		Path library = Path.of(System.getenv("GMB_TEST_LIBRARY"));
+		Path library = Path.of(System.getenv("GBM_TEST_LIBRARY"));
 		LoadedPlugin plugin = new LoadedPlugin(new NativePluginBackend(library));
 
 		assertEquals("hello_native", plugin.metadata().id());

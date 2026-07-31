@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Locale;
 
 final class PaperAdminCommand implements CommandExecutor, TabCompleter {
-	private static final String PREFIX = ChatColor.DARK_AQUA + "[GoBridge] " + ChatColor.RESET;
+	private static final String PREFIX = ChatColor.DARK_AQUA + "[GBM] " + ChatColor.RESET;
 	private final PaperGoPluginManager plugins;
 
 	PaperAdminCommand(PaperGoPluginManager plugins) {
@@ -119,7 +119,7 @@ final class PaperAdminCommand implements CommandExecutor, TabCompleter {
 
 	private void reload(CommandSender sender, String[] args) {
 		if (args.length < 2) {
-			sender.sendMessage(PREFIX + ChatColor.RED + "Usage: /gmb reload <plugin-id>");
+			sender.sendMessage(PREFIX + ChatColor.RED + "Usage: /gbm reload <plugin-id>");
 			return;
 		}
 		result(sender, this.plugins.reload(args[1]));
@@ -129,7 +129,7 @@ final class PaperAdminCommand implements CommandExecutor, TabCompleter {
 			CommandSender sender, BridgeManagementSnapshot snapshot, String[] args, String action
 	) {
 		if (args.length < 2) {
-			sender.sendMessage(PREFIX + ChatColor.RED + "Usage: /gmb " + action + " <plugin-id>");
+			sender.sendMessage(PREFIX + ChatColor.RED + "Usage: /gbm " + action + " <plugin-id>");
 			return null;
 		}
 		return snapshot.plugins().stream()

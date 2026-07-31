@@ -1,6 +1,6 @@
-# Go Minecraft Bridge
+# GBM
 
-Go Minecraft Bridge hosts plugins written in Go in both Minecraft server and
+GBM (GoBridgeMinecraft) hosts plugins written in Go in both Minecraft server and
 client processes. The Minecraft-facing code stays in Java, while plugin logic
 receives immutable snapshots/events and returns actions or named system calls.
 
@@ -58,9 +58,9 @@ Build both Fabric targets:
 The production JARs are written to:
 
 ```text
-versions/1.21.1/build/libs/go-minecraft-bridge-1.21.1-<version>.jar
-versions/26.1.2/build/libs/go-minecraft-bridge-26.1.2-<version>.jar
-platforms/paper/build/libs/go-minecraft-bridge-paper-<version>.jar
+versions/1.21.1/build/libs/gbm-1.21.1-<version>.jar
+versions/26.1.2/build/libs/gbm-26.1.2-<version>.jar
+platforms/paper/build/libs/gbm-paper-<version>.jar
 ```
 
 Run a development client for one target with `./gradlew :mc1211:runClient` or
@@ -72,11 +72,11 @@ Copy the shaded Paper JAR to the server's `plugins` directory, start the server
 once, and put native Go libraries in:
 
 ```text
-plugins/GoMinecraftBridge/go-plugins/libmy_plugin.so
+plugins/GBM/plugins/libmy_plugin.so
 ```
 
 Use `.dll` on Windows and `.dylib` on macOS. Plugin data is stored separately in
-`plugins/GoMinecraftBridge/data/<plugin-id>`. Paper/Purpur invokes the same ABI
+`plugins/GBM/data/<plugin-id>`. Paper/Purpur invokes the same ABI
 operations as Fabric: metadata, init, server tick, chat, death, system-call
 result, and deinit. Snapshots, chat actions, and all built-in system calls use
 the public Bukkit/Paper API rather than Minecraft internals.
@@ -84,19 +84,19 @@ the public Bukkit/Paper API rather than Minecraft internals.
 An operator or the server console can inspect and manage the runtime with:
 
 ```text
-/gmb status
-/gmb packages
-/gmb metadata <plugin-id>
-/gmb logs <plugin-id> [count]
-/gmb reload <plugin-id>
-/gmb rescan
+/gbm status
+/gbm packages
+/gbm metadata <plugin-id>
+/gbm logs <plugin-id> [count]
+/gbm reload <plugin-id>
+/gbm rescan
 ```
 
 On `1.21.1` and `26.1.2`, an operator using the matching Fabric client mod can
 also open the existing Cloth Config screen. The Paper plugin exposes the same
-`go_minecraft_bridge:admin_request`/`admin_response` management channels, with
+`gbm:admin_request`/`gbm:admin_response` management channels, with
 package paths, metadata, logs, rescan, and reload withheld from non-OP players.
-Large responses are shortened below Paper's plugin-message limit; `/gmb` remains
+Large responses are shortened below Paper's plugin-message limit; `/gbm` remains
 available for complete server-side output. A separate Fabric client target is
 still required before this UI can be used on Minecraft `1.21.11`.
 
@@ -114,7 +114,7 @@ Copy the resulting library to either location:
 
 ```text
 mods/libhello_native.so
-config/go-minecraft-bridge/plugins/libhello_native.so
+config/gbm/plugins/libhello_native.so
 ```
 
 Use `.dll` on Windows and `.dylib` on macOS. The plugin reports its own ID,
@@ -124,12 +124,16 @@ or `both`; omitted environment metadata remains compatible and means `server`.
 Client and `both` plugins installed on a client belong in:
 
 ```text
-config/go-minecraft-bridge/client-plugins/libmy_plugin.so
+config/gbm/client-plugins/libmy_plugin.so
 ```
 
 They run independently of the connected server. Client plugin data is kept in
-`config/go-minecraft-bridge/client-data/<plugin-id>`; server plugin data remains
-under `config/go-minecraft-bridge/data/<plugin-id>`.
+`config/gbm/client-data/<plugin-id>`; server plugin data remains under
+`config/gbm/data/<plugin-id>`.
+
+For migration, GBM also scans the former `config/go-minecraft-bridge/plugins`
+and `client-plugins` directories. New installations and all newly written data
+use `config/gbm`.
 
 The client runtime emits `Init`, `ClientTick`, and `Deinit`, captures plugin
 logs, supports local rescan/reload, and permits only the local
@@ -178,7 +182,7 @@ call registry.
 ## Cloth Config management screen
 
 Install the Cloth Config and Mod Menu versions from the target table, then open
-**Mods → Go Minecraft Bridge → Configure**. The screen always shows local client
+**Mods → GBM → Configure**. The screen always shows local client
 packages and, when supported by the connected server, server packages. It provides:
 
 - validation results for native packages found in `plugins` and `mods`;
@@ -194,6 +198,42 @@ point, primitive-list, and nested struct fields are supported. Saved values are
 delivered to the live Go plugin and persisted in
 `client-data/<plugin-id>/config.json`.
 
+The **Package catalog** category connects directly to the public backend API.
+Set its backend URL, enter a search query, and save; reopen the screen to select
+and install a published client package. Catalog-managed packages are stored in
+`config/gbm/client-plugins/<project-slug>/`, with the native library normalized
+to `<project-slug>.so` (`.dll` or `.dylib` on other platforms). Raw native
+libraries and ZIP archives are supported. Downloads are size-limited, verified
+against the release SHA-256, and ZIP paths are confined to the package folder.
+
+Each installed package receives a `gbm-package.json` source manifest, while the
+catalog settings and installed-project index are persisted in
+`config/gbm/repository.json`. Enabling automatic updates checks every package in
+that index at client startup and installs newer backend releases. A newly
+installed library can be discovered immediately; replacing a library that is
+already loaded still takes effect after Minecraft restarts.
+
+A Java-side backend integration can attach a custom Mod Menu update checker to
+one of these entries. The checker is run on Mod Menu's worker thread, so its
+callback may synchronously request the version endpoint:
+
+```java
+GoMinecraftBridgeClient.runtime().modMenu().registerUpdateChecker("my_plugin", () -> {
+    BackendVersion version = backend.checkVersion("my_plugin");
+    if (!version.updateAvailable()) {
+        return null;
+    }
+    return new NativePluginUpdateInfo(
+            version.downloadUrl(),
+            UpdateChannel.RELEASE
+    );
+});
+```
+
+Registration automatically enables update checks for that entry and starts a
+new Mod Menu check. Call `unregisterUpdateChecker("my_plugin")` on the same
+adapter to detach it.
+
 Local client package inspection, logs, rescan, and lifecycle reload do not need
 server permission. Server information and controls still require a player from
 the server's vanilla OP list.
@@ -201,7 +241,7 @@ the server's vanilla OP list.
 Management data and actions are returned only to players present in the
 server's vanilla OP list. A non-OP response contains no package paths, plugin
 metadata, or logs. Cloth Config and Mod Menu are client-only optional
-integrations; a dedicated server only needs Go Minecraft Bridge and Fabric API.
+integrations; a dedicated server only needs GBM and Fabric API.
 The client mod can remain installed when joining an ordinary server without the
 bridge: it detects the missing management channel and disables only the remote
 package/plugin screen for that connection.
@@ -259,6 +299,7 @@ var cfg = &config{Greeting: "Hello from Go", Enabled: true}
 func (myPlugin) Metadata() sdk.Metadata {
     return sdk.Metadata{
         ID: "my_plugin", Name: "My plugin", Version: "1.0.0",
+        License: "MIT",
         Environment: sdk.PluginEnvironmentClient,
         ConfigSchema: cfg,
     }
@@ -326,7 +367,7 @@ calls currently include:
 - `sdk.SystemCallServerInfo` (`minecraft:server.info`);
 - `sdk.SystemCallPlayerGet` (`minecraft:player.get`);
 - `sdk.SystemCallBlockGet` (`minecraft:block.get`);
-- `sdk.SystemCallGetEntity` (`minecraft:get_entity`).
+- `sdk.SystemCallGetEntity` (`minecraft:entity.get`).
 
 Built-in calls are requested through the typed `SystemCallType` API:
 
@@ -382,11 +423,12 @@ Run all Java and Go tests, including the real Java-to-Go FFI test:
 
 ```bash
 ./examples/hello-native/build.sh
-GMB_TEST_LIBRARY="$PWD/examples/hello-native/dist/libhello_native.so" ./gradlew test
+GBM_TEST_LIBRARY="$PWD/examples/hello-native/dist/libhello_native.so" ./gradlew test
 (cd sdk && go test ./...)
 ```
 
-The wire-level contract is documented in [`docs/native-abi.md`](docs/native-abi.md).
+The code layout is documented in [`docs/architecture.md`](docs/architecture.md),
+and the wire-level contract in [`docs/native-abi.md`](docs/native-abi.md).
 
 ## Codec and performance
 

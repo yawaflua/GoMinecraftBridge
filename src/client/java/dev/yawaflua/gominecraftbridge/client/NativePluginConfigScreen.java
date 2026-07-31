@@ -21,7 +21,7 @@ final class NativePluginConfigScreen {
 	}
 
 	static Screen create(Screen parent, String pluginId) {
-		ManagedPluginSnapshot plugin = GoMinecraftBridgeClient.localPlugin(pluginId);
+		ManagedPluginSnapshot plugin = GoMinecraftBridgeClient.runtime().localPlugin(pluginId);
 		if (plugin == null || plugin.metadata().configSchema() == null) {
 			return parent;
 		}
@@ -42,7 +42,8 @@ final class NativePluginConfigScreen {
 					"No supported boolean, string, numeric, or primitive-list fields were exposed."
 			)).build());
 		}
-		builder.setSavingRunnable(() -> GoMinecraftBridgeClient.updateLocalConfig(pluginId, edited.deepCopy()));
+		builder.setSavingRunnable(() -> GoMinecraftBridgeClient.runtime()
+				.updateLocalConfig(pluginId, edited.deepCopy()));
 		return builder.build();
 	}
 

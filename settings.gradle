@@ -17,7 +17,7 @@ pluginManagement {
 	}
 }
 
-rootProject.name = 'go-minecraft-bridge'
+rootProject.name = 'gbm'
 
 include 'mc1211'
 project(':mc1211').projectDir = file('versions/1.21.1')

@@ -23,7 +23,8 @@ final class BuiltInSystemCallsTest {
 						BuiltInSystemCall.SERVER_INFO.id(),
 						BuiltInSystemCall.PLAYER_GET.id(),
 						BuiltInSystemCall.BLOCK_GET.id(),
-						BuiltInSystemCall.GET_ENTITY.id()
+						BuiltInSystemCall.GET_ENTITY.id(),
+						BuiltInSystemCall.KILL_ENTITY.id()
 				),
 				registry.entries().keySet()
 		);

@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 final class LoadedPluginMetadataTest {
@@ -17,6 +18,19 @@ final class LoadedPluginMetadataTest {
 		LoadedPlugin plugin = new LoadedPlugin(new MetadataBackend(""));
 
 		assertEquals(PluginEnvironment.SERVER, plugin.metadata().environment());
+		assertNull(plugin.metadata().license());
+	}
+
+	@Test
+	void readsLicenseAndLegacyLicenceSpelling() {
+		assertEquals(
+				"MIT",
+				new LoadedPlugin(new MetadataBackend(",\"license\":\"MIT\"")).metadata().license()
+		);
+		assertEquals(
+				"Apache-2.0",
+				new LoadedPlugin(new MetadataBackend(",\"licence\":\"Apache-2.0\"")).metadata().license()
+		);
 	}
 
 	@Test

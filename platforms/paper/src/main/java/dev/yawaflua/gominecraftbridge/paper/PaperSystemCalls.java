@@ -10,6 +10,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 
 import java.math.BigDecimal;
@@ -27,7 +28,8 @@ final class PaperSystemCalls {
 			case "minecraft:server.info" -> serverInfo(tick);
 			case "minecraft:player.get" -> playerGet(payload);
 			case "minecraft:block.get" -> blockGet(payload);
-			case "minecraft:get_entity" -> entityGet(payload);
+			case "minecraft:entity.get" -> entityGet(payload);
+			case "minecraft:entity.kill" -> entityKill(payload);
 			default -> throw new IllegalArgumentException("Unknown system call " + name);
 		};
 	}
@@ -81,21 +83,15 @@ final class PaperSystemCalls {
 		return result;
 	}
 
-	private JsonElement entityGet(JsonElement payload) {
-		JsonObject request = object(payload, "minecraft:get_entity");
+	private JsonElement entityKill(JsonElement payload) {
+		JsonObject request = object(payload, "minecraft:entity.kill");
 		boolean hasUuid = request.has("uuid");
-		boolean hasRuntimeId = request.has("runtimeId");
-		if (hasUuid == hasRuntimeId) {
-			throw new IllegalArgumentException(
-					"minecraft:get_entity payload must contain exactly one of uuid or runtimeId"
-			);
-		}
 
 		Entity selected = null;
 		if (hasUuid) {
 			JsonElement value = request.get("uuid");
 			if (!(value instanceof JsonPrimitive primitive) || !primitive.isString()) {
-				throw new IllegalArgumentException("minecraft:get_entity uuid must be a string");
+				throw new IllegalArgumentException("minecraft:entity.kill uuid must be a string");
 			}
 			UUID uuid;
 			try {
@@ -105,7 +101,49 @@ final class PaperSystemCalls {
 					throw new IllegalArgumentException("non-canonical UUID");
 				}
 			} catch (IllegalArgumentException exception) {
-				throw new IllegalArgumentException("minecraft:get_entity uuid is not a valid UUID", exception);
+				throw new IllegalArgumentException("minecraft:entity.get uuid is not a valid UUID", exception);
+			}
+			for (World world : Bukkit.getWorlds()) {
+				selected = world.getEntity(uuid);
+				if (selected instanceof LivingEntity living) {
+					living.setHealth(0);
+					break;
+				}
+				if (selected != null) {
+					break;
+				}
+			}
+		} else {
+			throw new IllegalArgumentException("minecraft:entity.kill must contain uuid");
+		}
+		return selected == null ? JsonNull.INSTANCE : ProtocolJson.tree(this.snapshots.entity(selected));
+	}
+
+	private JsonElement entityGet(JsonElement payload) {
+		JsonObject request = object(payload, "minecraft:entity.get");
+		boolean hasUuid = request.has("uuid");
+		boolean hasRuntimeId = request.has("runtimeId");
+		if (hasUuid == hasRuntimeId) {
+			throw new IllegalArgumentException(
+					"minecraft:entity.get payload must contain exactly one of uuid or runtimeId"
+			);
+		}
+
+		Entity selected = null;
+		if (hasUuid) {
+			JsonElement value = request.get("uuid");
+			if (!(value instanceof JsonPrimitive primitive) || !primitive.isString()) {
+				throw new IllegalArgumentException("minecraft:entity.get uuid must be a string");
+			}
+			UUID uuid;
+			try {
+				String raw = primitive.getAsString();
+				uuid = UUID.fromString(raw);
+				if (!uuid.toString().equalsIgnoreCase(raw)) {
+					throw new IllegalArgumentException("non-canonical UUID");
+				}
+			} catch (IllegalArgumentException exception) {
+				throw new IllegalArgumentException("minecraft:entity.get uuid is not a valid UUID", exception);
 			}
 			for (World world : Bukkit.getWorlds()) {
 				selected = world.getEntity(uuid);
@@ -114,7 +152,7 @@ final class PaperSystemCalls {
 				}
 			}
 		} else {
-			int runtimeId = exactInt(request.get("runtimeId"), "minecraft:get_entity runtimeId");
+			int runtimeId = exactInt(request.get("runtimeId"), "minecraft:entity.get runtimeId");
 			for (World world : Bukkit.getWorlds()) {
 				for (Entity entity : world.getEntities()) {
 					if (entity.getEntityId() == runtimeId) {

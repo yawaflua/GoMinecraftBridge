@@ -8,7 +8,6 @@ import dev.yawaflua.gominecraftbridge.protocol.AllowDeathEvent;
 import dev.yawaflua.gominecraftbridge.api.GoMinecraftBridgeApi;
 import dev.yawaflua.gominecraftbridge.api.SystemCallContext;
 import dev.yawaflua.gominecraftbridge.api.SystemCallHandler;
-import dev.yawaflua.gominecraftbridge.backend.nativeffi.NativePluginBackend;
 import dev.yawaflua.gominecraftbridge.compat.MinecraftVersionAdapter;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
@@ -32,32 +31,35 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.time.Instant;
 
 public final class GoPluginManager {
 	private static final int MAX_SYSTEM_CALL_CHAIN = 32;
 
 	private final Logger logger;
+	private final Path legacyPluginDirectory;
 	private final Path pluginDirectory;
 	private final Path dataDirectory;
+	private final NativePluginRegistry registry;
 	private final MinecraftSnapshotFactory snapshots = new MinecraftSnapshotFactory();
 	private final ActionExecutor actions = new ActionExecutor();
-	private final Map<String, LoadedPlugin> plugins = new LinkedHashMap<>();
-	private final List<PackageInspection> packageInspections = new ArrayList<>();
 	/** Lifecycle flag is read by the networking/admin thread as well as the server thread. */
 	private volatile boolean serverRunning;
 
 	public GoPluginManager(Logger logger) {
 		this.logger = logger;
-		Path root = FabricLoader.getInstance().getConfigDir().resolve("go-minecraft-bridge");
+		Path config = FabricLoader.getInstance().getConfigDir();
+		Path root = config.resolve("gbm");
+		this.legacyPluginDirectory = config.resolve("go-minecraft-bridge").resolve("plugins");
 		this.pluginDirectory = root.resolve("plugins");
 		this.dataDirectory = root.resolve("data");
+		this.registry = new NativePluginRegistry(new NativePackageScanner(List.of(
+				new NativePackageScanner.SearchRoot(this.pluginDirectory, false),
+				new NativePackageScanner.SearchRoot(this.legacyPluginDirectory, false),
+				new NativePackageScanner.SearchRoot(FabricLoader.getInstance().getGameDir().resolve("mods"), false)
+		)));
 	}
 
 	public synchronized void discover() {
@@ -65,14 +67,13 @@ public final class GoPluginManager {
 	}
 
 	public synchronized ReloadResult rescan(MinecraftServer server) {
-		int before = this.plugins.size();
+		int before = this.registry.plugins().size();
 		scanCandidates(server);
-		int added = this.plugins.size() - before;
+		int added = this.registry.plugins().size() - before;
 		return new ReloadResult(true, "Package check completed; new plugins: " + added);
 	}
 
 	private void scanCandidates(MinecraftServer server) {
-		this.packageInspections.clear();
 		try {
 			Files.createDirectories(this.pluginDirectory);
 			Files.createDirectories(this.dataDirectory);
@@ -80,67 +81,34 @@ public final class GoPluginManager {
 			throw new IllegalStateException("Cannot create Go plugin directories", exception);
 		}
 
-		for (Path candidate : nativeCandidates()) {
-			try {
-				Path normalized = candidate.toAbsolutePath().normalize();
-				LoadedPlugin alreadyLoaded = this.plugins.values().stream()
-						.filter(plugin -> plugin.backend().origin().equals(normalized))
-						.findFirst()
-						.orElse(null);
-				if (alreadyLoaded != null) {
-					this.packageInspections.add(new PackageInspection(
-							normalized.toString(), true, alreadyLoaded.metadata().id(), null
-					));
-					continue;
-				}
-
-				LoadedPlugin plugin = new LoadedPlugin(new NativePluginBackend(candidate));
-				if (!plugin.metadata().environment().supportsServer()) {
-					this.packageInspections.add(new PackageInspection(
-							normalized.toString(), true, plugin.metadata().id(), null
-					));
-					this.logger.info(
-							"Skipping client-only Go plugin {} in the server runtime",
-							plugin.metadata().id()
-					);
-					continue;
-				}
-				LoadedPlugin duplicate = this.plugins.putIfAbsent(plugin.metadata().id(), plugin);
-				if (duplicate != null) {
-					throw new IllegalArgumentException("Duplicate plugin id " + plugin.metadata().id());
-				}
-				GoMinecraftBridgeApi.plugins().register(plugin.metadata());
-				this.packageInspections.add(new PackageInspection(
-						candidate.toAbsolutePath().normalize().toString(),
-						true,
-						plugin.metadata().id(),
-						null
-				));
-				bridgeLog(plugin, "info", "Package check passed: " + candidate.toAbsolutePath().normalize());
-				this.logger.info(
-						"Discovered Go plugin {} {} from {}",
-						plugin.metadata().name(),
-						plugin.metadata().version(),
-						candidate.getFileName()
-				);
-				if (server != null && this.serverRunning) {
-					startPlugin(plugin, server);
-				}
-			} catch (RuntimeException exception) {
-				this.packageInspections.add(new PackageInspection(
-						candidate.toAbsolutePath().normalize().toString(),
-						false,
-						null,
-						rootMessage(exception)
-				));
-				this.logger.error("Cannot load Go plugin {}", candidate, exception);
+		NativePluginRegistry.DiscoveryReport report = this.registry.discover(
+				metadata -> metadata.environment().supportsServer()
+		);
+		for (NativePluginRegistry.SkippedPlugin skipped : report.skipped()) {
+			this.logger.info("Skipping client-only GBM plugin {}", skipped.plugin().metadata().id());
+		}
+		for (NativePluginRegistry.PackageFailure failure : report.failures()) {
+			this.logger.error("Cannot load GBM plugin {}", failure.path(), failure.cause());
+		}
+		for (NativePackageScanner.ScanFailure failure : report.scanFailures()) {
+			this.logger.error("Cannot scan {}", failure.root(), failure.cause());
+		}
+		for (LoadedPlugin plugin : report.discovered()) {
+			GoMinecraftBridgeApi.plugins().register(plugin.metadata());
+			bridgeLog(plugin, "info", "Package check passed: " + plugin.backend().origin());
+			this.logger.info(
+					"Discovered GBM plugin {} {} from {}",
+					plugin.metadata().name(), plugin.metadata().version(), plugin.backend().origin().getFileName()
+			);
+			if (server != null && this.serverRunning) {
+				startPlugin(plugin, server);
 			}
 		}
 	}
 
 	public synchronized void start(MinecraftServer server) {
 		this.serverRunning = true;
-		for (LoadedPlugin plugin : this.plugins.values()) {
+		for (LoadedPlugin plugin : this.registry.plugins()) {
 			startPlugin(plugin, server);
 		}
 	}
@@ -203,22 +171,22 @@ public final class GoPluginManager {
 	}
 
 	public synchronized List<LoadedPlugin> plugins() {
-		return List.copyOf(this.plugins.values());
+		return this.registry.plugins();
 	}
 
 	/** Returns the latest package validation results as an immutable snapshot. */
 	public synchronized List<PackageInspection> packageInspections() {
-		return List.copyOf(this.packageInspections);
+		return this.registry.inspections();
 	}
 
 	/** Returns a point-in-time copy of a plugin's retained logs, or an empty list when unknown. */
 	public synchronized List<PluginLog> pluginLogs(String pluginId) {
-		LoadedPlugin plugin = this.plugins.get(pluginId);
+		LoadedPlugin plugin = this.registry.plugin(pluginId);
 		return plugin == null ? List.of() : plugin.logs();
 	}
 
 	public synchronized BridgeManagementSnapshot managementSnapshot(boolean canReload, String message) {
-		List<ManagedPluginSnapshot> pluginSnapshots = this.plugins.values().stream()
+		List<ManagedPluginSnapshot> pluginSnapshots = this.registry.plugins().stream()
 				.map(plugin -> new ManagedPluginSnapshot(
 						plugin.metadata(),
 						plugin.state().name().toLowerCase(Locale.ROOT),
@@ -232,7 +200,7 @@ public final class GoPluginManager {
 				this.serverRunning,
 				canReload && this.serverRunning,
 				message,
-				List.copyOf(this.packageInspections),
+				this.registry.inspections(),
 				pluginSnapshots
 		);
 	}
@@ -241,7 +209,7 @@ public final class GoPluginManager {
 		if (!this.serverRunning) {
 			return new ReloadResult(false, "Server is not running");
 		}
-		LoadedPlugin plugin = this.plugins.get(pluginId);
+		LoadedPlugin plugin = this.registry.plugin(pluginId);
 		if (plugin == null) {
 			return new ReloadResult(false, "Unknown plugin: " + pluginId);
 		}
@@ -433,46 +401,7 @@ public final class GoPluginManager {
 	}
 
 	private List<LoadedPlugin> runningPlugins() {
-		return this.plugins.values().stream()
-				.filter(plugin -> plugin.state() == PluginState.RUNNING)
-				.toList();
-	}
-
-	private List<Path> nativeCandidates() {
-		String extension = nativeExtension();
-		List<Path> result = new ArrayList<>();
-		List<Path> directories = List.of(
-				this.pluginDirectory,
-				FabricLoader.getInstance().getGameDir().resolve("mods")
-		);
-
-		for (Path directory : directories) {
-			if (!Files.isDirectory(directory)) {
-				continue;
-			}
-			try (var files = Files.list(directory)) {
-				files
-						.filter(Files::isRegularFile)
-						.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(extension))
-						.forEach(result::add);
-			} catch (IOException exception) {
-				this.logger.error("Cannot scan {}", directory, exception);
-			}
-		}
-
-		result.sort(Comparator.comparing(Path::toString));
-		return List.copyOf(result);
-	}
-
-	private static String nativeExtension() {
-		String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-		if (os.contains("win")) {
-			return ".dll";
-		}
-		if (os.contains("mac")) {
-			return ".dylib";
-		}
-		return ".so";
+		return this.registry.runningPlugins();
 	}
 
 	private void disable(LoadedPlugin plugin, String reason, Throwable throwable) {

@@ -30,6 +30,10 @@ final class NativeModMenuEntry implements Mod {
 		this.metadata = Objects.requireNonNull(metadata, "metadata");
 	}
 
+	PluginMetadata metadata() {
+		return this.metadata;
+	}
+
 	@Override
 	public String getId() {
 		return this.metadata.id();
@@ -111,7 +115,8 @@ final class NativeModMenuEntry implements Mod {
 
 	@Override
 	public Set<String> getLicense() {
-		return Set.of();
+		String license = this.metadata.license();
+		return license == null || license.isBlank() ? Set.of() : Set.of(license);
 	}
 
 	@Override
@@ -126,7 +131,7 @@ final class NativeModMenuEntry implements Mod {
 
 	@Override
 	public boolean allowsUpdateChecks() {
-		return false;
+		return this.updateChecker != null;
 	}
 
 	@Override

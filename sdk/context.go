@@ -157,3 +157,13 @@ func (context *Context) Log(level, message string) {
 		TimestampUnixMilli: time.Now().UnixMilli(),
 	})
 }
+
+func (context *Context) Kill(entityId string) {
+	context.actions = append(context.actions, ActionRequest{
+		Type: "minecraft:server.kill",
+		Payload: map[string]any{
+			"entityId": entityId,
+		},
+	})
+
+}

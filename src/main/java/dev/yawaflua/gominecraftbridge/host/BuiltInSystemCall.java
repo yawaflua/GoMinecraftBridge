@@ -5,7 +5,8 @@ public enum BuiltInSystemCall {
 	SERVER_INFO("minecraft:server.info"),
 	PLAYER_GET("minecraft:player.get"),
 	BLOCK_GET("minecraft:block.get"),
-	GET_ENTITY("minecraft:get_entity");
+	GET_ENTITY("minecraft:entity.get"),
+	KILL_ENTITY("minecraft:entity.kill");
 
 	private final String id;
 

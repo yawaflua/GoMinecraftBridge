@@ -1,0 +1,589 @@
+syntax = "proto3";
+
+package project.v1;
+
+option go_package = "github.com/yawaflua/GoMinecraftBridge/backend/gen/project/v1;projectv1";
+
+import "google/api/annotations.proto";
+import "google/api/httpbody.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+// GBMBackend exposes the public API and the moderator/admin API.
+// Methods under /v1/admin require USER_ROLE_MODERATOR or USER_ROLE_ADMIN.
+service GBMBackend {
+  rpc Register(RegisterRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/register"
+      body: "*"
+    };
+  }
+
+  rpc Login(LoginRequest) returns (AuthResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/login"
+      body: "*"
+    };
+  }
+
+  rpc RefreshToken(RefreshTokenRequest) returns (TokenPair) {
+    option (google.api.http) = {
+      post: "/v1/auth/token:refresh"
+      body: "*"
+    };
+  }
+
+  rpc Logout(LogoutRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/auth/logout"
+      body: "*"
+    };
+  }
+
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (User) {
+    option (google.api.http) = {get: "/v1/users/me"};
+  }
+
+  rpc UpdateCurrentUser(UpdateCurrentUserRequest) returns (User) {
+    option (google.api.http) = {
+      patch: "/v1/users/me"
+      body: "user"
+    };
+  }
+
+  rpc CreateProject(CreateProjectRequest) returns (Project) {
+    option (google.api.http) = {
+      post: "/v1/projects"
+      body: "project"
+    };
+  }
+
+  rpc CheckSlugAvailability(CheckSlugAvailabilityRequest) returns (CheckSlugAvailabilityResponse) {
+    option (google.api.http) = {get: "/v1/projects/slug/{slug}:check"};
+  }
+
+  rpc GetProject(GetProjectRequest) returns (Project) {
+    option (google.api.http) = {
+      get: "/v1/projects/id/{project_id}"
+      additional_bindings {get: "/v1/projects/slug/{slug}"}
+    };
+  }
+
+  rpc ListMyProjects(ListMyProjectsRequest) returns (ListProjectsResponse) {
+    option (google.api.http) = {get: "/v1/users/me/projects"};
+  }
+
+  rpc UpdateProject(UpdateProjectRequest) returns (Project) {
+    option (google.api.http) = {
+      patch: "/v1/projects/{project_id}"
+      body: "project"
+    };
+  }
+
+  rpc SearchProjects(SearchProjectsRequest) returns (SearchProjectsResponse) {
+    option (google.api.http) = {get: "/v1/projects:search"};
+  }
+
+  rpc ListProjectVersions(ListProjectVersionsRequest) returns (ListProjectVersionsResponse) {
+    option (google.api.http) = {get: "/v1/projects/{project_id}/versions"};
+  }
+
+  rpc GetProjectVersion(GetProjectVersionRequest) returns (ProjectVersion) {
+    option (google.api.http) = {get: "/v1/projects/{project_id}/versions/{version_id}"};
+  }
+
+  // The owner uploads the archive together with its changelog, README and metadata.
+  rpc UploadProjectVersion(UploadProjectVersionRequest) returns (ProjectVersion) {
+    option (google.api.http) = {
+      post: "/v1/projects/{project_id}/versions"
+      body: "*"
+    };
+  }
+
+  rpc UpdateVersionMetadata(UpdateVersionMetadataRequest) returns (ProjectVersion) {
+    option (google.api.http) = {
+      patch: "/v1/projects/{project_id}/versions/{version_id}/metadata"
+      body: "metadata"
+    };
+  }
+
+  rpc DownloadProjectVersion(DownloadProjectVersionRequest) returns (google.api.HttpBody) {
+    option (google.api.http) = {
+      get: "/v1/projects/id/{project_id}/versions/{version}:download"
+      additional_bindings {
+        get: "/v1/projects/slug/{slug}/versions/{version}:download"
+      }
+    };
+  }
+
+  // A project must contain at least one complete version before submission.
+  rpc SubmitProject(SubmitProjectRequest) returns (ProjectReviewRequest) {
+    option (google.api.http) = {
+      post: "/v1/projects/{project_id}:submit"
+      body: "*"
+    };
+  }
+
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse) {
+    option (google.api.http) = {get: "/v1/users/me/notifications"};
+  }
+
+  rpc MarkNotificationsRead(MarkNotificationsReadRequest) returns (MarkNotificationsReadResponse) {
+    option (google.api.http) = {
+      post: "/v1/users/me/notifications:mark-read"
+      body: "*"
+    };
+  }
+
+  rpc CheckNewVersions(CheckNewVersionsRequest) returns (CheckNewVersionsResponse) {
+    option (google.api.http) = {
+      get: "/v1/projects/@all/versions/check"
+      additional_bindings {
+        post: "/v1/projects/@all/versions/check"
+        body: "*"
+      }
+    };
+  }
+
+  // Moderator/admin methods.
+  rpc ListProjectReviewRequests(ListProjectReviewRequestsRequest) returns (ListProjectReviewRequestsResponse) {
+    option (google.api.http) = {get: "/v1/admin/project-review-requests"};
+  }
+
+  rpc ReviewProject(ReviewProjectRequest) returns (ProjectReviewRequest) {
+    option (google.api.http) = {
+      post: "/v1/admin/project-review-requests/{review_request_id}:review"
+      body: "*"
+    };
+  }
+
+  // Admin-only.
+  rpc UpdateUserRoles(UpdateUserRolesRequest) returns (User) {
+    option (google.api.http) = {
+      put: "/v1/admin/users/{user_id}/roles"
+      body: "*"
+    };
+  }
+
+  rpc SetUserBan(SetUserBanRequest) returns (User) {
+    option (google.api.http) = {
+      post: "/v1/admin/users/{user_id}:set-ban"
+      body: "*"
+    };
+  }
+
+  rpc SetProjectStatus(SetProjectStatusRequest) returns (Project) {
+    option (google.api.http) = {
+      post: "/v1/admin/projects/{project_id}:set-status"
+      body: "*"
+    };
+  }
+
+  rpc DeleteProjectVersion(DeleteProjectVersionRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/admin/projects/{project_id}/versions/{version_id}"};
+  }
+
+  // Moderator/admin.
+  rpc CreateNotification(CreateNotificationRequest) returns (CreateNotificationResponse) {
+    option (google.api.http) = {
+      post: "/v1/admin/notifications"
+      body: "*"
+    };
+  }
+}
+
+enum UserRole {
+  USER_ROLE_UNSPECIFIED = 0;
+  USER_ROLE_USER = 1;
+  USER_ROLE_MODERATOR = 2;
+  USER_ROLE_ADMIN = 3;
+}
+
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  USER_STATUS_ACTIVE = 1;
+  USER_STATUS_BANNED = 2;
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  string username = 3;
+  string minecraft_uuid = 4;
+  string avatar_url = 5;
+  repeated UserRole roles = 6;
+  UserStatus status = 7;
+  string ban_reason = 8;
+  google.protobuf.Timestamp banned_until = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message RegisterRequest {
+  string email = 1;
+  string username = 2;
+  string password = 3;
+  string minecraft_uuid = 4;
+}
+
+message LoginRequest {
+  oneof login {
+    string email = 1;
+    string username = 2;
+  }
+  string password = 3;
+}
+
+message AuthResponse {
+  User user = 1;
+  TokenPair tokens = 2;
+}
+
+message TokenPair {
+  string access_token = 1;
+  string refresh_token = 2;
+  google.protobuf.Timestamp access_token_expires_at = 3;
+  google.protobuf.Timestamp refresh_token_expires_at = 4;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message GetCurrentUserRequest {}
+
+message UserUpdate {
+  string email = 1;
+  string username = 2;
+  string password = 3;
+  string minecraft_uuid = 4;
+  bytes avatar = 5;
+  string avatar_content_type = 6;
+}
+
+message UpdateCurrentUserRequest {
+  UserUpdate user = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+enum ProjectStatus {
+  PROJECT_STATUS_UNSPECIFIED = 0;
+  PROJECT_STATUS_DRAFT = 1;
+  PROJECT_STATUS_PENDING_REVIEW = 2;
+  PROJECT_STATUS_PUBLISHED = 3;
+  PROJECT_STATUS_REJECTED = 4;
+  PROJECT_STATUS_BANNED = 5;
+}
+
+message Project {
+  string id = 1;
+  string slug = 2;
+  string name = 3;
+  string description = 4;
+  string owner_id = 5;
+  ProjectStatus status = 6;
+  string status_reason = 7;
+  string latest_version = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message ProjectInput {
+  string slug = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message CreateProjectRequest {
+  ProjectInput project = 1;
+}
+
+message CheckSlugAvailabilityRequest {
+  string slug = 1;
+  // During an edit, the current project can be excluded from the uniqueness check.
+  string exclude_project_id = 2;
+}
+
+message CheckSlugAvailabilityResponse {
+  bool available = 1;
+}
+
+message GetProjectRequest {
+  oneof project_selector {
+    string project_id = 1;
+    string slug = 2;
+  }
+}
+
+message ListMyProjectsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  bool include_banned = 3;
+}
+
+message ListProjectsResponse {
+  repeated Project projects = 1;
+  string next_page_token = 2;
+}
+
+message ProjectUpdate {
+  string slug = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message UpdateProjectRequest {
+  string project_id = 1;
+  ProjectUpdate project = 2;
+  google.protobuf.FieldMask update_mask = 3;
+}
+
+message SearchProjectsRequest {
+  string query = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+  float min_similarity = 4;
+}
+
+message SearchProjectResult {
+  Project project = 1;
+  float similarity = 2;
+}
+
+message SearchProjectsResponse {
+  repeated SearchProjectResult projects = 1;
+  string next_page_token = 2;
+}
+
+enum VersionTag {
+  VERSION_TAG_UNSPECIFIED = 0;
+  VERSION_TAG_RELEASE = 1;
+  VERSION_TAG_BETA = 2;
+  VERSION_TAG_ALPHA = 3;
+}
+
+enum PluginEnvironment {
+  PLUGIN_ENVIRONMENT_UNSPECIFIED = 0;
+  PLUGIN_ENVIRONMENT_SERVER = 1;
+  PLUGIN_ENVIRONMENT_CLIENT = 2;
+  PLUGIN_ENVIRONMENT_BOTH = 3;
+}
+
+message VersionMetadata {
+  string slug = 1;
+  string description = 2;
+  repeated string licenses = 3;
+  repeated string authors = 4;
+  string abi_version = 5;
+  string api_version = 6;
+  PluginEnvironment environment = 7;
+}
+
+message ProjectVersion {
+  string id = 1;
+  string project_id = 2;
+  string version = 3;
+  string description = 4;
+  string changelog = 5;
+  string readme = 6;
+  VersionTag tag = 7;
+  VersionMetadata metadata = 8;
+  int64 size_bytes = 9;
+  string sha256 = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message ListProjectVersionsRequest {
+  string project_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListProjectVersionsResponse {
+  repeated ProjectVersion versions = 1;
+  string next_page_token = 2;
+}
+
+message GetProjectVersionRequest {
+  string project_id = 1;
+  string version_id = 2;
+}
+
+message UploadProjectVersionRequest {
+  string project_id = 1;
+  string version = 2;
+  string description = 3;
+  string changelog = 4;
+  string readme = 5;
+  VersionTag tag = 6;
+  VersionMetadata metadata = 7;
+  google.api.HttpBody archive = 8;
+}
+
+message UpdateVersionMetadataRequest {
+  string project_id = 1;
+  string version_id = 2;
+  VersionMetadata metadata = 3;
+  google.protobuf.FieldMask update_mask = 4;
+}
+
+message DownloadProjectVersionRequest {
+  oneof project_selector {
+    string project_id = 1;
+    string slug = 2;
+  }
+  // A version ID, semantic version, or "latest".
+  string version = 3;
+}
+
+enum ReviewStatus {
+  REVIEW_STATUS_UNSPECIFIED = 0;
+  REVIEW_STATUS_PENDING = 1;
+  REVIEW_STATUS_APPROVED = 2;
+  REVIEW_STATUS_REJECTED = 3;
+  REVIEW_STATUS_CANCELLED = 4;
+}
+
+message ProjectReviewRequest {
+  string id = 1;
+  string project_id = 2;
+  string submitted_by = 3;
+  ReviewStatus status = 4;
+  string review_comment = 5;
+  string reviewed_by = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp reviewed_at = 8;
+}
+
+message SubmitProjectRequest {
+  string project_id = 1;
+  string comment = 2;
+}
+
+message ListProjectReviewRequestsRequest {
+  ReviewStatus status = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListProjectReviewRequestsResponse {
+  repeated ProjectReviewRequest review_requests = 1;
+  string next_page_token = 2;
+}
+
+enum ReviewDecision {
+  REVIEW_DECISION_UNSPECIFIED = 0;
+  REVIEW_DECISION_APPROVE = 1;
+  REVIEW_DECISION_REJECT = 2;
+}
+
+message ReviewProjectRequest {
+  string review_request_id = 1;
+  ReviewDecision decision = 2;
+  string comment = 3;
+}
+
+message UpdateUserRolesRequest {
+  string user_id = 1;
+  repeated UserRole roles = 2;
+}
+
+message SetUserBanRequest {
+  string user_id = 1;
+  bool banned = 2;
+  string reason = 3;
+  // Empty means a permanent ban.
+  google.protobuf.Timestamp banned_until = 4;
+}
+
+message SetProjectStatusRequest {
+  string project_id = 1;
+  ProjectStatus status = 2;
+  string reason = 3;
+}
+
+message DeleteProjectVersionRequest {
+  string project_id = 1;
+  string version_id = 2;
+  string reason = 3;
+}
+
+message Notification {
+  string id = 1;
+  string recipient_user_id = 2;
+  string project_id = 3;
+  string review_request_id = 4;
+  string text = 5;
+  bool system = 6;
+  bool read = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp read_at = 9;
+}
+
+message ListNotificationsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+  bool unread_only = 3;
+}
+
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  string next_page_token = 2;
+  int32 unread_count = 3;
+}
+
+message MarkNotificationsReadRequest {
+  // Empty means all notifications of the current user.
+  repeated string notification_ids = 1;
+}
+
+message MarkNotificationsReadResponse {
+  repeated Notification notifications = 1;
+}
+
+enum NotificationAudience {
+  NOTIFICATION_AUDIENCE_UNSPECIFIED = 0;
+  NOTIFICATION_AUDIENCE_ALL_USERS = 1;
+  NOTIFICATION_AUDIENCE_USER = 2;
+  NOTIFICATION_AUDIENCE_PROJECT_OWNER = 3;
+}
+
+message CreateNotificationRequest {
+  NotificationAudience audience = 1;
+  // Required for NOTIFICATION_AUDIENCE_USER.
+  string user_id = 2;
+  // Required for NOTIFICATION_AUDIENCE_PROJECT_OWNER and optional for USER.
+  string project_id = 3;
+  string review_request_id = 4;
+  string text = 5;
+}
+
+message CreateNotificationResponse {
+  repeated Notification notifications = 1;
+}
+
+message CheckNewVersionsRequest {
+  repeated InstalledPackage packages = 1;
+}
+
+message InstalledPackage {
+  string project_id = 1;
+  string version = 2;
+}
+
+message CheckNewVersionsResponse {
+  repeated VersionUpdate updates = 1;
+}
+
+message VersionUpdate {
+  string project_id = 1;
+  string current_version = 2;
+  string latest_version = 3;
+  bool update_available = 4;
+}

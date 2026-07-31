@@ -21,7 +21,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		go_minecraft_bridge {
+		gbm {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}

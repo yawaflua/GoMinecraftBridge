@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "id": "go_minecraft_bridge",
+  "id": "gbm",
   "icon": "icon.png",
   "version": "${version}",
-  "name": "Go Minecraft Bridge",
-  "description": "A native Go plugin host with server and client runtimes.",
+  "name": "GBM",
+  "description": "GoBridgeMinecraft native plugin runtime and package manager.",
   "authors": ["yawaflua"],
   "license": "All-Rights-Reserved",
   "environment": "*",
-  "mixins": ["go-minecraft-bridge.client.mixins.json"],
+  "mixins": ["gbm.client.mixins.json"],
   "entrypoints": {
     "main": ["dev.yawaflua.gominecraftbridge.GoMinecraftBridgeMod"],
     "client": ["dev.yawaflua.gominecraftbridge.client.GoMinecraftBridgeClient"],

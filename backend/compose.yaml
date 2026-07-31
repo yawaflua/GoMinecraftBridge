@@ -1,0 +1,63 @@
+volumes:
+  db:
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gmb
+      POSTGRES_USER: gmb
+      POSTGRES_PASSWORD: gmb
+    ports:
+      - "5432:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrator:
+    build:
+      context: .
+      dockerfile: migrator.Dockerfile
+    image: gmb:migrator-latest
+    environment:
+      PSQL_HOST: db
+      PSQL_PORT: "5432"
+      PSQL_DATABASE: gmb
+      PSQL_USERNAME: gmb
+      PSQL_PASSWORD: gmb
+      PSQL_SSLMODE: disable
+      USE_PSQL: "true"
+      JWT_SECRET: replace-this-with-a-random-secret-at-least-32-bytes-long
+      JWT_AUDIENCE: gmb.ywfl.dev
+      JWT_ISSUER: gmb.ywfl.dev
+    depends_on:
+      db:
+        condition: service_healthy
+
+  gmb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gmb:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PSQL_HOST: db
+      PSQL_PORT: "5432"
+      PSQL_DATABASE: gmb
+      PSQL_USERNAME: gmb
+      PSQL_PASSWORD: gmb
+      PSQL_SSLMODE: disable
+      USE_PSQL: "true"
+      JWT_SECRET: replace-this-with-a-random-secret-at-least-32-bytes-long
+      JWT_AUDIENCE: gmb.ywfl.dev
+      JWT_ISSUER: gmb.ywfl.dev
+    depends_on:
+      migrator:
+        condition: service_completed_successfully

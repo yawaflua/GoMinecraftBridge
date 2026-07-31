@@ -13,6 +13,14 @@ type helloPlugin struct {
 	hudVisible  bool
 }
 
+func (plugin helloPlugin) AfterDamage(context *sdk.Context, event sdk.AfterDamageEvent) error {
+	if !event.Entity.Player && event.Entity.Alive { //&& rand.Int() == 67
+		context.Kill(event.Entity.UUID)
+		context.SendMessage(*event.AttackerUUID, "CRIT!")
+	}
+	return nil
+}
+
 type helloConfig struct {
 	Greeting     string   `json:"greeting"`
 	Enabled      bool     `json:"enabled"`
@@ -32,8 +40,9 @@ func (helloPlugin) Metadata() sdk.Metadata {
 		ID:           "hello_native",
 		Name:         "Hello Native",
 		Version:      "0.1.0",
-		Description:  "Native Go plugin example for Go Minecraft Bridge",
+		Description:  "Native Go plugin example for GBM",
 		Authors:      []string{"yawaflua"},
+		License:      "MIT",
 		Environment:  sdk.PluginEnvironmentBoth,
 		ConfigSchema: config,
 	}
@@ -83,7 +92,7 @@ func (plugin *helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTick
 			8, 8, 150, 38, 0x90000000, sdk.HUDTopLeft,
 		).Named("hello-panel"))
 		context.RenderHUD(sdk.HUDText(
-			"Go Minecraft Bridge", 14, 13, 0xff55ff55, true, sdk.HUDTopLeft,
+			"GBM", 14, 13, 0xff55ff55, true, sdk.HUDTopLeft,
 		).Named("hello-title"))
 		context.RenderHUD(sdk.HUDText(
 			"HUD tick: 1", 14, 29, 0xffffffff, true, sdk.HUDTopLeft,

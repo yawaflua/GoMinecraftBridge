@@ -1,6 +1,7 @@
 package dev.yawaflua.gominecraftbridge.host;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import dev.yawaflua.gominecraftbridge.api.SystemCallRegistry;
@@ -10,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -84,6 +86,14 @@ public final class BuiltInSystemCalls {
 			Entity entity = findEntity(context.server().getAllLevels(), lookup);
 			return entity == null ? ProtocolJson.tree(null) : ProtocolJson.tree(SNAPSHOTS.entity(entity));
 		});
+
+		registry.register(BuiltInSystemCall.KILL_ENTITY.id(), (context, payload) -> {
+			EntityLookup lookup = parseEntityLookup(payload);
+			Entity entity = killEntity(context.server().getAllLevels(), lookup);
+			return entity == null ? ProtocolJson.tree(null) : ProtocolJson.tree(SNAPSHOTS.entity(entity));
+		});
+
+
 	}
 
 	static EntityLookup parseEntityLookup(JsonElement payload) {
@@ -139,6 +149,25 @@ public final class BuiltInSystemCalls {
 				}
 				if (lookup.runtimeId() != null && lookup.runtimeId() == entity.getId()) {
 					return entity;
+				}
+			}
+		}
+		return null;
+	}
+
+	private static void kill(Entity entity, ServerLevel lvl){
+		if (entity instanceof LivingEntity le) {
+			MinecraftVersionAdapter.kill(le, lvl);
+		}
+	}
+	private static Entity killEntity(Iterable<ServerLevel> levels, EntityLookup lookup) {
+		for (ServerLevel level : levels) {
+			for (Entity entity : level.getAllEntities()) {
+				if (lookup.uuid() != null && lookup.uuid().equals(entity.getUUID())) {
+					kill(entity, level);
+				}
+				if (lookup.runtimeId() != null && lookup.runtimeId() == entity.getId()) {
+					kill(entity, level);
 				}
 			}
 		}

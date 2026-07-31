@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "id": "go_minecraft_bridge",
+  "id": "gbm",
   "icon": "icon.png",
   "version": "${version}",
-  "name": "Go Minecraft Bridge",
-  "description": "A server-side host for native Go and WebAssembly plugins.",
+  "name": "GBM",
+  "description": "GoBridgeMinecraft native plugin runtime and package manager.",
   "authors": [
     "yawaflua"
   ],
   "license": "All-Rights-Reserved",
   "environment": "*",
   "mixins": [
-    "go-minecraft-bridge.client.mixins.json"
+    "gbm.client.mixins.json"
   ],
   "entrypoints": {
     "main": [

@@ -1,6 +1,6 @@
 package dev.yawaflua.gominecraftbridge.client.mixin;
 
-import dev.yawaflua.gominecraftbridge.client.NativeModMenuEntries;
+import dev.yawaflua.gominecraftbridge.client.GoMinecraftBridgeClient;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
@@ -12,6 +12,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ModsScreenMixin {
 	@Inject(method = "init", at = @At("HEAD"))
 	private void goMinecraftBridge$addNativePlugins(CallbackInfo callbackInfo) {
-		NativeModMenuEntries.synchronize();
+		GoMinecraftBridgeClient.runtime().refreshModMenu();
 	}
 }

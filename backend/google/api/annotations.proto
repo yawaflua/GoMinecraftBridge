@@ -1,0 +1,14 @@
+// A minimal, wire-compatible copy of google/api/annotations.proto.
+// The HTTP option number and type match googleapis/googleapis.
+syntax = "proto3";
+
+package google.api;
+
+option go_package = "google.golang.org/genproto/googleapis/api/annotations;annotations";
+
+import "google/api/http.proto";
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MethodOptions {
+  HttpRule http = 72295728;
+}

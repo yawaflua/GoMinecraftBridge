@@ -9,7 +9,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@EnabledIfEnvironmentVariable(named = "GMB_TEST_LIBRARY", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "GBM_TEST_LIBRARY", matches = ".+")
 class PaperShadedNativeBackendTest {
 	@Test
 	void shadedPaperJarLoadsTheRealGoLibrary() throws Exception {
@@ -21,7 +21,7 @@ class PaperShadedNativeBackendTest {
 					"dev.yawaflua.gominecraftbridge.backend.nativeffi.NativePluginBackend"
 			);
 			Object backend = backendType.getConstructor(Path.class)
-					.newInstance(Path.of(System.getenv("GMB_TEST_LIBRARY")));
+					.newInstance(Path.of(System.getenv("GBM_TEST_LIBRARY")));
 			Class<?> pluginBackendType = loader.loadClass(
 					"dev.yawaflua.gominecraftbridge.backend.PluginBackend"
 			);

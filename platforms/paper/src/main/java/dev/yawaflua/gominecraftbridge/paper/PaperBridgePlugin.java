@@ -32,9 +32,9 @@ public final class PaperBridgePlugin extends JavaPlugin implements Listener {
 		this.plugins.start();
 
 		Bukkit.getPluginManager().registerEvents(this, this);
-		PluginCommand command = getCommand("go-minecraft-bridge");
+		PluginCommand command = getCommand("gbm");
 		if (command == null) {
-			throw new IllegalStateException("go-minecraft-bridge command is missing from plugin.yml");
+			throw new IllegalStateException("gbm command is missing from plugin.yml");
 		}
 		PaperAdminCommand administrator = new PaperAdminCommand(this.plugins);
 		command.setExecutor(administrator);
@@ -48,7 +48,7 @@ public final class PaperBridgePlugin extends JavaPlugin implements Listener {
 		);
 		this.tickTask = Bukkit.getScheduler().runTaskTimer(this, this.plugins::tick, 1L, 1L);
 
-		getLogger().info("Go Minecraft Bridge Paper/Purpur runtime enabled");
+		getLogger().info("GBM Paper/Purpur runtime enabled");
 	}
 
 	@Override

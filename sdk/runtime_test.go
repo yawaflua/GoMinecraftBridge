@@ -128,6 +128,27 @@ func TestMetadataDefaultsToServerEnvironment(t *testing.T) {
 	}
 }
 
+func TestMetadataSerializesLicense(t *testing.T) {
+	metadata := Metadata{
+		ID: "licensed", Name: "Licensed", Version: "1.0.0", License: "MIT",
+	}
+
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if fields["license"] != "MIT" {
+		t.Fatalf("license metadata was not serialized: %s", encoded)
+	}
+	if _, legacy := fields["licence"]; legacy {
+		t.Fatalf("metadata used legacy licence spelling: %s", encoded)
+	}
+}
+
 func TestMetadataMarksPointerConfigWritable(t *testing.T) {
 	pluginMu.Lock()
 	registeredPlugin = &configurableTestPlugin{config: &testConfig{Greeting: "old"}}

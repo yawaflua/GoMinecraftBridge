@@ -15,7 +15,7 @@ public final class ClientHudRendering {
 	public static void register(ClientHudState state) {
 		HudElementRegistry.attachElementBefore(
 				VanillaHudElements.CHAT,
-				Identifier.fromNamespaceAndPath("go_minecraft_bridge", "go_plugin_hud"),
+				Identifier.fromNamespaceAndPath("gbm", "plugin_hud"),
 				(graphics, deltaTracker) -> render(state, graphics)
 		);
 	}

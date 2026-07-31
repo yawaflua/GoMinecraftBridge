@@ -20,7 +20,7 @@ class BridgeAdminNetworking1211Test {
 				.mapToObj(index -> new PluginLog("sdk", "info", hugeMessage, index))
 				.toList();
 		PluginMetadata metadata = new PluginMetadata(
-				"large", "Large", "1", "", List.of(), null, 2, null, PluginEnvironment.BOTH
+				"large", "Large", "1", "", List.of(), null, "MIT", 2, null, PluginEnvironment.BOTH
 		);
 		BridgeManagementSnapshot snapshot = new BridgeManagementSnapshot(
 				1, true, true, null, List.of(),

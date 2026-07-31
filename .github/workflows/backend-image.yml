@@ -1,0 +1,86 @@
+name: Backend container
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-image.yml'
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: backend-container-${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/yawaflua/gominecraftbridge
+
+jobs:
+  test-build-publish:
+    name: Test, build and publish backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Test backend
+        working-directory: backend
+        run: |
+          go mod verify
+          go vet ./...
+          go test -race ./...
+          go build ./cmd/app
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.ref == 'refs/heads/master' || github.ref_type == 'tag' || github.event_name == 'release'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=backend-master,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=backend-latest,enable=${{ github.ref_type == 'tag' || github.event_name == 'release' }}
+            type=ref,event=tag,prefix=backend-,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=backend-${{ github.event.release.tag_name }},enable=${{ github.event_name == 'release' }}
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: ${{ github.ref == 'refs/heads/master' || github.ref_type == 'tag' || github.event_name == 'release' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          provenance: true
+          sbom: true

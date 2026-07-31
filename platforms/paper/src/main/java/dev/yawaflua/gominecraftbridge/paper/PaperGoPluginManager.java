@@ -2,12 +2,12 @@ package dev.yawaflua.gominecraftbridge.paper;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
-import dev.yawaflua.gominecraftbridge.backend.nativeffi.NativePluginBackend;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
+import dev.yawaflua.gominecraftbridge.host.NativePackageScanner;
+import dev.yawaflua.gominecraftbridge.host.NativePluginRegistry;
 import dev.yawaflua.gominecraftbridge.host.PluginState;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
-import dev.yawaflua.gominecraftbridge.management.PackageInspection;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeathEvent;
@@ -25,12 +25,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -40,8 +36,7 @@ final class PaperGoPluginManager {
 	private final Logger logger;
 	private final Path pluginDirectory;
 	private final Path dataDirectory;
-	private final Map<String, LoadedPlugin> plugins = new LinkedHashMap<>();
-	private final List<PackageInspection> packageInspections = new ArrayList<>();
+	private final NativePluginRegistry registry;
 	private final PaperSnapshotFactory snapshots = new PaperSnapshotFactory();
 	private final PaperActionExecutor actions = new PaperActionExecutor();
 	private final PaperSystemCalls systemCalls = new PaperSystemCalls(this.snapshots);
@@ -50,8 +45,11 @@ final class PaperGoPluginManager {
 
 	PaperGoPluginManager(Logger logger, Path pluginDataDirectory) {
 		this.logger = logger;
-		this.pluginDirectory = pluginDataDirectory.resolve("go-plugins");
+		this.pluginDirectory = pluginDataDirectory.resolve("plugins");
 		this.dataDirectory = pluginDataDirectory.resolve("data");
+		this.registry = new NativePluginRegistry(new NativePackageScanner(List.of(
+				new NativePackageScanner.SearchRoot(this.pluginDirectory, false)
+		)));
 	}
 
 	synchronized void discover() {
@@ -59,13 +57,13 @@ final class PaperGoPluginManager {
 	}
 
 	synchronized ReloadResult rescan() {
-		int before = this.plugins.size();
+		int before = this.registry.plugins().size();
 		scanCandidates();
-		return new ReloadResult(true, "Package check completed; new plugins: " + (this.plugins.size() - before));
+		return new ReloadResult(true, "Package check completed; new plugins: "
+				+ (this.registry.plugins().size() - before));
 	}
 
 	private void scanCandidates() {
-		this.packageInspections.clear();
 		try {
 			Files.createDirectories(this.pluginDirectory);
 			Files.createDirectories(this.dataDirectory);
@@ -73,52 +71,31 @@ final class PaperGoPluginManager {
 			throw new IllegalStateException("Cannot create Paper Go plugin directories", exception);
 		}
 
-		for (Path candidate : nativeCandidates()) {
-			Path normalized = candidate.toAbsolutePath().normalize();
-			try {
-				LoadedPlugin existing = this.plugins.values().stream()
-						.filter(plugin -> plugin.backend().origin().equals(normalized))
-						.findFirst()
-						.orElse(null);
-				if (existing != null) {
-					this.packageInspections.add(new PackageInspection(
-							normalized.toString(), true, existing.metadata().id(), null
-					));
-					continue;
-				}
-
-				LoadedPlugin plugin = new LoadedPlugin(new NativePluginBackend(candidate));
-				if (!plugin.metadata().environment().supportsServer()) {
-					this.packageInspections.add(new PackageInspection(
-							normalized.toString(), true, plugin.metadata().id(), null
-					));
-					this.logger.info("Skipping client-only Go plugin " + plugin.metadata().id());
-					continue;
-				}
-				if (this.plugins.putIfAbsent(plugin.metadata().id(), plugin) != null) {
-					throw new IllegalArgumentException("Duplicate plugin id " + plugin.metadata().id());
-				}
-				this.packageInspections.add(new PackageInspection(
-						normalized.toString(), true, plugin.metadata().id(), null
-				));
-				bridgeLog(plugin, "info", "Package check passed: " + normalized);
-				this.logger.info("Discovered Go plugin " + plugin.metadata().name()
-						+ " " + plugin.metadata().version() + " from " + candidate.getFileName());
-				if (this.running) {
-					startPlugin(plugin);
-				}
-			} catch (RuntimeException exception) {
-				this.packageInspections.add(new PackageInspection(
-						normalized.toString(), false, null, rootMessage(exception)
-				));
-				this.logger.log(Level.SEVERE, "Cannot load Go plugin " + candidate, exception);
+		NativePluginRegistry.DiscoveryReport report = this.registry.discover(
+				metadata -> metadata.environment().supportsServer()
+		);
+		for (NativePluginRegistry.SkippedPlugin skipped : report.skipped()) {
+			this.logger.info("Skipping client-only GBM plugin " + skipped.plugin().metadata().id());
+		}
+		for (NativePluginRegistry.PackageFailure failure : report.failures()) {
+			this.logger.log(Level.SEVERE, "Cannot load GBM plugin " + failure.path(), failure.cause());
+		}
+		for (NativePackageScanner.ScanFailure failure : report.scanFailures()) {
+			this.logger.log(Level.SEVERE, "Cannot scan native plugin directory " + failure.root(), failure.cause());
+		}
+		for (LoadedPlugin plugin : report.discovered()) {
+			bridgeLog(plugin, "info", "Package check passed: " + plugin.backend().origin());
+			this.logger.info("Discovered GBM plugin " + plugin.metadata().name()
+					+ " " + plugin.metadata().version() + " from " + plugin.backend().origin().getFileName());
+			if (this.running) {
+				startPlugin(plugin);
 			}
 		}
 	}
 
 	synchronized void start() {
 		this.running = true;
-		for (LoadedPlugin plugin : this.plugins.values()) {
+		for (LoadedPlugin plugin : this.registry.plugins()) {
 			startPlugin(plugin);
 		}
 	}
@@ -163,7 +140,7 @@ final class PaperGoPluginManager {
 		if (!this.running) {
 			return new ReloadResult(false, "Paper plugin runtime is stopped");
 		}
-		LoadedPlugin plugin = this.plugins.get(pluginId);
+		LoadedPlugin plugin = this.registry.plugin(pluginId);
 		if (plugin == null) {
 			return new ReloadResult(false, "Unknown Go plugin: " + pluginId);
 		}
@@ -184,7 +161,7 @@ final class PaperGoPluginManager {
 	}
 
 	synchronized BridgeManagementSnapshot managementSnapshot(String message) {
-		List<ManagedPluginSnapshot> pluginSnapshots = this.plugins.values().stream()
+		List<ManagedPluginSnapshot> pluginSnapshots = this.registry.plugins().stream()
 				.map(plugin -> new ManagedPluginSnapshot(
 						plugin.metadata(), plugin.state().name().toLowerCase(Locale.ROOT),
 						plugin.backend().getClass().getSimpleName(),
@@ -193,7 +170,7 @@ final class PaperGoPluginManager {
 				.toList();
 		return new BridgeManagementSnapshot(
 				Instant.now().toEpochMilli(), this.running, this.running, message,
-				List.copyOf(this.packageInspections), pluginSnapshots
+				this.registry.inspections(), pluginSnapshots
 		);
 	}
 
@@ -289,35 +266,7 @@ final class PaperGoPluginManager {
 	}
 
 	private List<LoadedPlugin> runningPlugins() {
-		return this.plugins.values().stream()
-				.filter(plugin -> plugin.state() == PluginState.RUNNING)
-				.toList();
-	}
-
-	private List<Path> nativeCandidates() {
-		if (!Files.isDirectory(this.pluginDirectory)) {
-			return List.of();
-		}
-		try (var files = Files.list(this.pluginDirectory)) {
-			return files.filter(Files::isRegularFile)
-					.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(nativeExtension()))
-					.sorted(Comparator.comparing(Path::toString))
-					.toList();
-		} catch (IOException exception) {
-			this.logger.log(Level.SEVERE, "Cannot scan native plugin directory " + this.pluginDirectory, exception);
-			return List.of();
-		}
-	}
-
-	private static String nativeExtension() {
-		String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-		if (os.contains("win")) {
-			return ".dll";
-		}
-		if (os.contains("mac")) {
-			return ".dylib";
-		}
-		return ".so";
+		return this.registry.runningPlugins();
 	}
 
 	private void disable(LoadedPlugin plugin, String reason, Throwable throwable) {

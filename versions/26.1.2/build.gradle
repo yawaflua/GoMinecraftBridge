@@ -21,7 +21,7 @@ loom {
 	splitEnvironmentSourceSets()
 
 	mods {
-		go_minecraft_bridge {
+		gbm {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}
@@ -40,7 +40,7 @@ sourceSets {
 		resources.srcDirs rootProject.file('src/main/resources')
 	}
 	client {
-		java.srcDirs rootProject.file('src/client/java'), file('src/client/java')
+		java.setSrcDirs([rootProject.file('src/client/java'), file('src/client/java')])
 	}
 	test {
 		java.srcDirs rootProject.file('src/test/java')
