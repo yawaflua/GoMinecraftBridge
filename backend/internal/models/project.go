@@ -12,6 +12,7 @@ type Project struct {
 	Slug         string        `json:"slug"`
 	Name         string        `json:"name"`
 	Description  string        `json:"description"`
+	GitURL       string        `json:"git_url,omitempty"`
 	Status       ProjectStatus `json:"status"`
 	StatusReason string        `json:"status_reason,omitempty"`
 

@@ -164,10 +164,10 @@ export const api = {
       `/v1/projects/slug/${encodeURIComponent(slug)}:check${query({ excludeProjectId })}`,
     )
   },
-  createProject(project: { slug: string; name: string; description: string }) {
+  createProject(project: { slug: string; name: string; description: string; git_url: string }) {
     return request<Project>('/v1/projects', { method: 'POST', body: JSON.stringify(project) })
   },
-  updateProject(id: string, project: { slug: string; name: string; description: string }, fields: string[]) {
+  updateProject(id: string, project: { slug: string; name: string; description: string; git_url: string }, fields: string[]) {
     const params = new URLSearchParams(fields.map((field) => ['updateMask.paths', field]))
     return request<Project>(`/v1/projects/${encodeURIComponent(id)}?${params}`, {
       method: 'PATCH',

@@ -291,12 +291,14 @@ message Project {
   string latest_version = 8;
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
+  string git_url = 11;
 }
 
 message ProjectInput {
   string slug = 1;
   string name = 2;
   string description = 3;
+  string git_url = 4;
 }
 
 message CreateProjectRequest {
@@ -335,6 +337,7 @@ message ProjectUpdate {
   string slug = 1;
   string name = 2;
   string description = 3;
+  string git_url = 4;
 }
 
 message UpdateProjectRequest {

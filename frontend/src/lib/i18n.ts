@@ -110,6 +110,8 @@ const english: Record<string, string> = {
   'Например, World Sync': 'For example, World Sync',
   'Короткое описание': 'Short description',
   'Что делает мод и кому он будет полезен?': 'What does the mod do, and who is it for?',
+  'Ссылка на исходный код': 'Source code URL',
+  'Укажите HTTP(S), SSH или Git URL публичного репозитория.': 'Enter the HTTP(S), SSH, or Git URL of the public repository.',
   'Адрес проекта': 'Project address',
   'Используется в публичной ссылке и должен быть уникальным.': 'Used in the public URL and must be unique.',
   'Проверяем доступность…': 'Checking availability…',

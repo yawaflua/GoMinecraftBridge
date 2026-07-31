@@ -60,7 +60,7 @@ func (m mongo) SetUserBan(ctx context.Context, userId uuid.UUID, banned bool, re
 	panic("implement me")
 }
 
-func (m mongo) CreateProject(ctx context.Context, authorId uuid.UUID, name, description, slug string) models.Project {
+func (m mongo) CreateProject(ctx context.Context, authorId uuid.UUID, name, description, slug, gitURL string) models.Project {
 	//TODO implement me
 	panic("implement me")
 }
@@ -70,7 +70,7 @@ func (m mongo) CheckSlugAvailability(ctx context.Context, slug string, excludePr
 	panic("implement me")
 }
 
-func (m mongo) EditProject(ctx context.Context, projectId uuid.UUID, name, description, slug string) models.Project {
+func (m mongo) EditProject(ctx context.Context, projectId uuid.UUID, name, description, slug, gitURL string) models.Project {
 	//TODO implement me
 	panic("implement me")
 }

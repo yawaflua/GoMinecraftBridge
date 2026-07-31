@@ -17,7 +17,124 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
+
+type projectEndpointDatabase struct {
+	adapters.DB
+	project       models.Project
+	createdGitURL string
+	editedGitURL  string
+}
+
+func (database *projectEndpointDatabase) CreateProject(
+	_ context.Context,
+	authorID uuid.UUID,
+	name, description, slug, gitURL string,
+) (models.Project, error) {
+	database.createdGitURL = gitURL
+	database.project = models.Project{
+		Id:          uuid.New(),
+		AuthorId:    authorID,
+		Name:        name,
+		Description: description,
+		Slug:        slug,
+		GitURL:      gitURL,
+		Status:      models.ProjectStatusDraft,
+	}
+	return database.project, nil
+}
+
+func (database *projectEndpointDatabase) GetProjectById(
+	_ context.Context,
+	projectID uuid.UUID,
+) (models.Project, error) {
+	if projectID != database.project.Id {
+		return models.Project{}, context.Canceled
+	}
+	return database.project, nil
+}
+
+func (database *projectEndpointDatabase) EditProject(
+	_ context.Context,
+	projectID uuid.UUID,
+	name, description, slug, gitURL string,
+) (models.Project, error) {
+	if projectID != database.project.Id {
+		return models.Project{}, context.Canceled
+	}
+	database.editedGitURL = gitURL
+	database.project.Name = name
+	database.project.Description = description
+	database.project.Slug = slug
+	database.project.GitURL = gitURL
+	return database.project, nil
+}
+
+func TestProjectGitURLCanBeCreatedAndUpdated(t *testing.T) {
+	t.Parallel()
+
+	owner := models.User{
+		Id:     uuid.New(),
+		Roles:  []string{"user"},
+		Status: models.UserStatusActive,
+	}
+	database := &projectEndpointDatabase{}
+	service := NewService(ServiceDependencies{DB: database})
+	ctx := auth.ContextWithUser(context.Background(), owner)
+
+	created, err := service.CreateProject(ctx, &projectv1.CreateProjectRequest{
+		Project: &projectv1.ProjectInput{
+			Slug:        "git-project",
+			Name:        "Git project",
+			Description: "Project with a repository",
+			GitUrl:      " https://github.com/example/project.git ",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateProject() error = %v", err)
+	}
+	if database.createdGitURL != "https://github.com/example/project.git" || created.GetGitUrl() != database.createdGitURL {
+		t.Fatalf("created git URL = %q, response = %q", database.createdGitURL, created.GetGitUrl())
+	}
+
+	updated, err := service.UpdateProject(ctx, &projectv1.UpdateProjectRequest{
+		ProjectId: database.project.Id.String(),
+		Project: &projectv1.ProjectUpdate{
+			GitUrl: "git@github.com:example/project.git",
+		},
+		UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"git_url"}},
+	})
+	if err != nil {
+		t.Fatalf("UpdateProject() error = %v", err)
+	}
+	if database.editedGitURL != "git@github.com:example/project.git" || updated.GetGitUrl() != database.editedGitURL {
+		t.Fatalf("updated git URL = %q, response = %q", database.editedGitURL, updated.GetGitUrl())
+	}
+}
+
+func TestCreateProjectRejectsInvalidGitURL(t *testing.T) {
+	t.Parallel()
+
+	owner := models.User{Id: uuid.New(), Roles: []string{"user"}, Status: models.UserStatusActive}
+	database := &projectEndpointDatabase{}
+	service := NewService(ServiceDependencies{DB: database})
+	ctx := auth.ContextWithUser(context.Background(), owner)
+
+	_, err := service.CreateProject(ctx, &projectv1.CreateProjectRequest{
+		Project: &projectv1.ProjectInput{
+			Slug:   "git-project",
+			Name:   "Git project",
+			GitUrl: "not-a-url",
+		},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("CreateProject() code = %s, want %s", status.Code(err), codes.InvalidArgument)
+	}
+	if database.createdGitURL != "" {
+		t.Fatalf("CreateProject() persisted invalid git URL %q", database.createdGitURL)
+	}
+}
 
 type versionEndpointDatabase struct {
 	adapters.DB

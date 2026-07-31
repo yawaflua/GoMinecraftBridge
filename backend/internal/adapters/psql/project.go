@@ -16,12 +16,12 @@ import (
 func (psql *psql) CreateProject(
 	ctx context.Context,
 	authorID uuid.UUID,
-	name, description, slug string,
+	name, description, slug, gitURL string,
 ) (models.Project, error) {
 	builder := statement.
 		Insert("projects").
-		Columns("id", "author_id", "name", "description", "slug", "status").
-		Values(uuid.New(), authorID, name, description, slug, models.ProjectStatusDraft).
+		Columns("id", "author_id", "name", "description", "slug", "git_url", "status").
+		Values(uuid.New(), authorID, name, description, slug, gitURL, models.ProjectStatusDraft).
 		Suffix("RETURNING " + strings.Join(projectColumns, ", "))
 
 	query, args, err := buildQuery(builder, "create project")
@@ -68,13 +68,14 @@ func (psql *psql) CheckSlugAvailability(
 func (psql *psql) EditProject(
 	ctx context.Context,
 	projectID uuid.UUID,
-	name, description, slug string,
+	name, description, slug, gitURL string,
 ) (models.Project, error) {
 	builder := statement.
 		Update("projects").
 		Set("name", name).
 		Set("description", description).
 		Set("slug", slug).
+		Set("git_url", gitURL).
 		Set("updated_at", sq.Expr("NOW()")).
 		Where(sq.Eq{"id": projectID, "deleted_at": nil}).
 		Suffix("RETURNING " + strings.Join(projectColumns, ", "))

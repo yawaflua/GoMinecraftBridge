@@ -1119,6 +1119,7 @@ type Project struct {
 	LatestVersion string                 `protobuf:"bytes,8,opt,name=latest_version,json=latestVersion,proto3" json:"latest_version,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	GitUrl        string                 `protobuf:"bytes,11,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1223,11 +1224,19 @@ func (x *Project) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Project) GetGitUrl() string {
+	if x != nil {
+		return x.GitUrl
+	}
+	return ""
+}
+
 type ProjectInput struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Slug          string                 `protobuf:"bytes,1,opt,name=slug,proto3" json:"slug,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	GitUrl        string                 `protobuf:"bytes,4,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1279,6 +1288,13 @@ func (x *ProjectInput) GetName() string {
 func (x *ProjectInput) GetDescription() string {
 	if x != nil {
 		return x.Description
+	}
+	return ""
+}
+
+func (x *ProjectInput) GetGitUrl() string {
+	if x != nil {
+		return x.GitUrl
 	}
 	return ""
 }
@@ -1623,6 +1639,7 @@ type ProjectUpdate struct {
 	Slug          string                 `protobuf:"bytes,1,opt,name=slug,proto3" json:"slug,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	GitUrl        string                 `protobuf:"bytes,4,opt,name=git_url,json=gitUrl,proto3" json:"git_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1674,6 +1691,13 @@ func (x *ProjectUpdate) GetName() string {
 func (x *ProjectUpdate) GetDescription() string {
 	if x != nil {
 		return x.Description
+	}
+	return ""
+}
+
+func (x *ProjectUpdate) GetGitUrl() string {
+	if x != nil {
+		return x.GitUrl
 	}
 	return ""
 }
@@ -3826,7 +3850,7 @@ const file_api_project_v1_project_proto_rawDesc = "" +
 	"\x18UpdateCurrentUserRequest\x12*\n" +
 	"\x04user\x18\x01 \x01(\v2\x16.project.v1.UserUpdateR\x04user\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\"\xf3\x02\n" +
+	"updateMask\"\x8c\x03\n" +
 	"\aProject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04slug\x18\x02 \x01(\tR\x04slug\x12\x12\n" +
@@ -3840,11 +3864,13 @@ const file_api_project_v1_project_proto_rawDesc = "" +
 	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"X\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x17\n" +
+	"\agit_url\x18\v \x01(\tR\x06gitUrl\"q\n" +
 	"\fProjectInput\x12\x12\n" +
 	"\x04slug\x18\x01 \x01(\tR\x04slug\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\"J\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x17\n" +
+	"\agit_url\x18\x04 \x01(\tR\x06gitUrl\"J\n" +
 	"\x14CreateProjectRequest\x122\n" +
 	"\aproject\x18\x01 \x01(\v2\x18.project.v1.ProjectInputR\aproject\"`\n" +
 	"\x1cCheckSlugAvailabilityRequest\x12\x12\n" +
@@ -3864,11 +3890,12 @@ const file_api_project_v1_project_proto_rawDesc = "" +
 	"\x0einclude_banned\x18\x03 \x01(\bR\rincludeBanned\"o\n" +
 	"\x14ListProjectsResponse\x12/\n" +
 	"\bprojects\x18\x01 \x03(\v2\x13.project.v1.ProjectR\bprojects\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"Y\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"r\n" +
 	"\rProjectUpdate\x12\x12\n" +
 	"\x04slug\x18\x01 \x01(\tR\x04slug\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\"\xa7\x01\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x17\n" +
+	"\agit_url\x18\x04 \x01(\tR\x06gitUrl\"\xa7\x01\n" +
 	"\x14UpdateProjectRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x123\n" +

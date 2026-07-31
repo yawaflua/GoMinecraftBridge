@@ -55,6 +55,7 @@ export interface Project {
   slug: string
   name: string
   description: string
+  git_url: string
   owner_id: string
   status: ProjectStatus
   status_reason: string

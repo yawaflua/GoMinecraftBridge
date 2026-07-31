@@ -28,6 +28,7 @@
   let editName = ''
   let editSlug = ''
   let editDescription = ''
+  let editGitUrl = ''
 
   $: owner = Boolean(project && $session?.user.id === project.owner_id)
   let currentTab = new URLSearchParams(window.location.search).get('tab') ?? 'overview'
@@ -44,6 +45,7 @@
       editName = project.name
       editSlug = project.slug
       editDescription = project.description
+      editGitUrl = project.git_url ?? ''
       const versionResult = await api.versions(project.id)
       versions = versionResult.versions ?? []
       if ($session) {
@@ -119,7 +121,8 @@
         name: editName.trim(),
         slug: editSlug.trim(),
         description: editDescription.trim(),
-      }, ['name', 'slug', 'description'])
+        git_url: editGitUrl.trim(),
+      }, ['name', 'slug', 'description', 'git_url'])
       actionNotice = $t('Изменения проекта сохранены.')
     } catch (reason) {
       actionError = reason instanceof ApiError ? reason.message : $t('Не удалось сохранить проект')
@@ -246,6 +249,7 @@
         <label class="field"><span>{$t('Название')}</span><input bind:value={editName} required maxlength="100"/></label>
         <label class="field"><span>Slug</span><input bind:value={editSlug} required minlength="2" maxlength="64" pattern="[a-z0-9][a-z0-9-]+"/><small>{$t('Изменит публичную ссылку на проект.')}</small></label>
         <label class="field"><span>{$t('Описание')}</span><textarea bind:value={editDescription} rows="6" maxlength="4096"></textarea><small>{editDescription.length}/4096</small></label>
+        <label class="field"><span>{$t('Ссылка на исходный код')}</span><input bind:value={editGitUrl} type="text" required maxlength="2048" autocomplete="url" spellcheck="false" placeholder="https://github.com/example/world-sync"/><small>{$t('Укажите HTTP(S), SSH или Git URL публичного репозитория.')}</small></label>
       </form>
     {/if}
 

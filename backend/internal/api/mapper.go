@@ -65,6 +65,7 @@ func projectToProto(project models.Project) *projectv1.Project {
 		Slug:          project.Slug,
 		Name:          project.Name,
 		Description:   project.Description,
+		GitUrl:        project.GitURL,
 		OwnerId:       project.AuthorId.String(),
 		Status:        projectStatusToProto(project.Status),
 		StatusReason:  project.StatusReason,

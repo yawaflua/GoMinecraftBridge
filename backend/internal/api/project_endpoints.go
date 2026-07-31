@@ -37,6 +37,10 @@ func (service *Service) CreateProject(
 	if err = validateSlug(request.Project.Slug); err != nil {
 		return nil, err
 	}
+	gitURL, err := normalizeGitURL(request.Project.GitUrl)
+	if err != nil {
+		return nil, err
+	}
 
 	project, err := service.db.CreateProject(
 		ctx,
@@ -44,6 +48,7 @@ func (service *Service) CreateProject(
 		strings.TrimSpace(request.Project.Name),
 		request.Project.Description,
 		request.Project.Slug,
+		gitURL,
 	)
 	if err != nil {
 		return nil, databaseError("create project", err)
@@ -166,7 +171,7 @@ func (service *Service) UpdateProject(
 	if request.UpdateMask == nil || len(request.UpdateMask.Paths) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "update_mask is required")
 	}
-	if err = validateMask(request.UpdateMask, "name", "description", "slug"); err != nil {
+	if err = validateMask(request.UpdateMask, "name", "description", "slug", "git_url"); err != nil {
 		return nil, err
 	}
 	projectID, err := parseUUID(request.ProjectId, "project_id")
@@ -181,7 +186,7 @@ func (service *Service) UpdateProject(
 		return nil, err
 	}
 
-	name, description, slug := current.Name, current.Description, current.Slug
+	name, description, slug, gitURL := current.Name, current.Description, current.Slug, current.GitURL
 	if maskContains(request.UpdateMask, "name") {
 		name = strings.TrimSpace(request.Project.Name)
 		if name == "" || len(name) > 100 {
@@ -200,8 +205,14 @@ func (service *Service) UpdateProject(
 			return nil, err
 		}
 	}
+	if maskContains(request.UpdateMask, "git_url") {
+		gitURL, err = normalizeGitURL(request.Project.GitUrl)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	updated, err := service.db.EditProject(ctx, projectID, name, description, slug)
+	updated, err := service.db.EditProject(ctx, projectID, name, description, slug, gitURL)
 	if err != nil {
 		return nil, databaseError("update project", err)
 	}

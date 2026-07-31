@@ -25,9 +25,9 @@ type DB interface {
 	RotateRefreshSession(ctx context.Context, oldSessionId uuid.UUID, session models.RefreshSession) error
 	RevokeRefreshSession(ctx context.Context, sessionId uuid.UUID) error
 
-	CreateProject(ctx context.Context, authorId uuid.UUID, name, description, slug string) (models.Project, error)
+	CreateProject(ctx context.Context, authorId uuid.UUID, name, description, slug, gitURL string) (models.Project, error)
 	CheckSlugAvailability(ctx context.Context, slug string, excludeProjectId *uuid.UUID) (bool, error)
-	EditProject(ctx context.Context, projectId uuid.UUID, name, description, slug string) (models.Project, error)
+	EditProject(ctx context.Context, projectId uuid.UUID, name, description, slug, gitURL string) (models.Project, error)
 	GetProjectById(ctx context.Context, uuid uuid.UUID) (models.Project, error)
 	GetProjectBySlug(ctx context.Context, slug string) (models.Project, error)
 	GetUserProjects(ctx context.Context, uuid uuid.UUID) ([]models.Project, error)

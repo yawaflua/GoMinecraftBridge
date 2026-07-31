@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ const (
 var (
 	usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,32}$`)
 	slugPattern     = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+	gitSCPPattern   = regexp.MustCompile(`^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s]+$`)
 )
 
 func parseUUID(value, field string) (uuid.UUID, error) {
@@ -63,6 +65,30 @@ func validateSlug(value string) error {
 		return status.Error(codes.InvalidArgument, "slug must be 2-64 lowercase URL-safe characters")
 	}
 	return nil
+}
+
+func normalizeGitURL(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	if len(trimmed) > 2048 {
+		return "", status.Error(codes.InvalidArgument, "git_url exceeds 2048 characters")
+	}
+	if gitSCPPattern.MatchString(trimmed) {
+		return trimmed, nil
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" {
+		return "", status.Error(codes.InvalidArgument, "git_url must be an absolute HTTP(S), SSH, Git, or SCP-style URL")
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https", "ssh", "git":
+		return trimmed, nil
+	default:
+		return "", status.Error(codes.InvalidArgument, "git_url must use HTTP(S), SSH, or Git")
+	}
 }
 
 func validatePassword(value string) error {

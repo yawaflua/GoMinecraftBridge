@@ -8,6 +8,7 @@
   let name = ''
   let slug = ''
   let description = ''
+  let gitUrl = ''
   let slugTouched = false
   let slugState: 'idle' | 'checking' | 'available' | 'taken' = 'idle'
   let checkTimer: ReturnType<typeof setTimeout>
@@ -39,7 +40,12 @@
     error = ''
     pending = true
     try {
-      const project = await api.createProject({ name: name.trim(), slug, description: description.trim() })
+      const project = await api.createProject({
+        name: name.trim(),
+        slug,
+        description: description.trim(),
+        git_url: gitUrl.trim(),
+      })
       navigate(`/projects/${project.id}?created=1`)
     } catch (reason) {
       error = reason instanceof ApiError ? reason.message : $t('Не удалось создать проект')
@@ -61,13 +67,14 @@
         <p>{$t('Эти данные увидят игроки в каталоге.')}</p>
         <label class="field"><span>{$t('Название проекта')}</span><input bind:value={name} required maxlength="100" placeholder={$t('Например, World Sync')}/><small>{name.length}/100</small></label>
         <label class="field"><span>{$t('Короткое описание')}</span><textarea bind:value={description} maxlength="4096" rows="5" placeholder={$t('Что делает мод и кому он будет полезен?')}></textarea><small>{description.length}/4096</small></label>
+        <label class="field"><span>{$t('Ссылка на исходный код')}</span><input bind:value={gitUrl} type="text" required maxlength="2048" autocomplete="url" spellcheck="false" placeholder="https://github.com/example/world-sync"/><small>{$t('Укажите HTTP(S), SSH или Git URL публичного репозитория.')}</small></label>
       </fieldset>
       <fieldset class="form-section">
         <legend>{$t('Адрес проекта')}</legend>
         <p>{$t('Используется в публичной ссылке и должен быть уникальным.')}</p>
         <label class="field" class:valid={slugState === 'available'} class:invalid={slugState === 'taken'}>
           <span>Slug</span>
-          <div class="prefixed-input"><span>bridgemods.dev/mod/</span><input value={slug} on:input={(event) => updateSlug(event.currentTarget.value)} required minlength="2" maxlength="64" pattern="[a-z0-9][a-z0-9-]+" placeholder="world-sync"/></div>
+          <div class="prefixed-input"><span>bm.ywfl.dev/mod/</span><input value={slug} on:input={(event) => updateSlug(event.currentTarget.value)} required minlength="2" maxlength="64" pattern="[a-z0-9][a-z0-9-]+" placeholder="world-sync"/></div>
           <small aria-live="polite">{$t(slugState === 'checking' ? 'Проверяем доступность…' : slugState === 'available' ? 'Адрес свободен' : slugState === 'taken' ? 'Этот адрес уже занят' : '2–64 символа: a–z, 0–9 и дефис')}</small>
         </label>
       </fieldset>
