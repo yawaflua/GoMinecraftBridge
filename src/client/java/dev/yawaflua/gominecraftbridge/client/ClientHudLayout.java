@@ -13,16 +13,28 @@ public final class ClientHudLayout {
 			int screenWidth,
 			int screenHeight
 	) {
-		String anchor = element.anchor() == null ? "top_left" : element.anchor();
+		return position(element.anchor(), element.x(), element.y(), elementWidth, elementHeight, screenWidth, screenHeight);
+	}
+
+	public static Position position(
+			String requestedAnchor,
+			int requestedX,
+			int requestedY,
+			int elementWidth,
+			int elementHeight,
+			int screenWidth,
+			int screenHeight
+	) {
+		String anchor = requestedAnchor == null || requestedAnchor.isBlank() ? "top_left" : requestedAnchor;
 		int x = switch (anchor) {
-			case "top_center", "center", "bottom_center" -> screenWidth / 2 + element.x() - elementWidth / 2;
-			case "top_right", "center_right", "bottom_right" -> screenWidth - element.x() - elementWidth;
-			default -> element.x();
+			case "top_center", "center", "bottom_center" -> screenWidth / 2 + requestedX - elementWidth / 2;
+			case "top_right", "center_right", "bottom_right" -> screenWidth - requestedX - elementWidth;
+			default -> requestedX;
 		};
 		int y = switch (anchor) {
-			case "center_left", "center", "center_right" -> screenHeight / 2 + element.y() - elementHeight / 2;
-			case "bottom_left", "bottom_center", "bottom_right" -> screenHeight - element.y() - elementHeight;
-			default -> element.y();
+			case "center_left", "center", "center_right" -> screenHeight / 2 + requestedY - elementHeight / 2;
+			case "bottom_left", "bottom_center", "bottom_right" -> screenHeight - requestedY - elementHeight;
+			default -> requestedY;
 		};
 		return new Position(x, y);
 	}

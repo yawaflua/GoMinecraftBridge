@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,7 +32,7 @@ func Register(plugin Plugin) {
 
 // Dispatch dispatches a plugin operation to the registered plugin.
 func Dispatch(operation int, input []byte) (output []byte) {
-	context := &Context{}
+	context := &Context{client: dispatchRunsOnClient(operation, input)}
 	result := response{Status: "ok"}
 
 	defer func() {
@@ -73,6 +74,7 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		var event InitEvent
 		err = decode(input, &event)
 		if err == nil {
+			context.client = event.RuntimeEnvironment == PluginEnvironmentClient
 			if handler, ok := plugin.(Initializer); ok {
 				err = handler.Init(context, event)
 			}
@@ -198,6 +200,22 @@ func Dispatch(operation int, input []byte) (output []byte) {
 				err = handler.MobConversion(context, event)
 			}
 		}
+	case OperationClientScreenEvent:
+		var event ClientScreenEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(ClientScreenEventHandler); ok {
+				err = handler.ClientScreenEvent(context, event)
+			}
+		}
+	case OperationClientScreenCapture:
+		var capture ClientScreenCapture
+		capture, err = decodeClientScreenCapture(input)
+		if err == nil {
+			if handler, ok := plugin.(ClientScreenCaptureHandler); ok {
+				err = handler.ClientScreenCaptured(context, capture)
+			}
+		}
 	default:
 		err = fmt.Errorf("sdk: unknown operation %d", operation)
 	}
@@ -207,6 +225,46 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		result.Error = err.Error()
 	}
 	return nil
+}
+
+func dispatchRunsOnClient(operation int, input []byte) bool {
+	if operation == OperationClientTick || operation == OperationClientScreenEvent || operation == OperationClientScreenCapture {
+		return true
+	}
+	var scope struct {
+		RuntimeEnvironment PluginEnvironment `json:"runtimeEnvironment"`
+	}
+	return json.Unmarshal(input, &scope) == nil && scope.RuntimeEnvironment == PluginEnvironmentClient
+}
+
+const (
+	clientCaptureHeaderSize = 24
+	clientCaptureMaxPixels  = 16_000_000
+	clientCaptureMaxBytes   = 64 * 1024 * 1024
+)
+
+func decodeClientScreenCapture(input []byte) (ClientScreenCapture, error) {
+	if len(input) < clientCaptureHeaderSize || string(input[:4]) != "GMBC" {
+		return ClientScreenCapture{}, errors.New("sdk: invalid client screen capture header")
+	}
+	if input[4] != 1 || input[5] != 1 {
+		return ClientScreenCapture{}, errors.New("sdk: unsupported client screen capture format")
+	}
+	width := uint64(binary.LittleEndian.Uint32(input[8:12]))
+	height := uint64(binary.LittleEndian.Uint32(input[12:16]))
+	stride := uint64(binary.LittleEndian.Uint32(input[16:20]))
+	payloadLength := uint64(binary.LittleEndian.Uint32(input[20:24]))
+	if width == 0 || height == 0 || width*height > clientCaptureMaxPixels || stride != width*4 {
+		return ClientScreenCapture{}, errors.New("sdk: invalid client screen capture dimensions")
+	}
+	expected := stride * height
+	if expected != payloadLength || payloadLength > clientCaptureMaxBytes || payloadLength != uint64(len(input)-clientCaptureHeaderSize) {
+		return ClientScreenCapture{}, errors.New("sdk: invalid client screen capture payload length")
+	}
+	return ClientScreenCapture{
+		Width: int(width), Height: int(height), Stride: int(stride),
+		Format: ClientPixelFormatRGBA8, Pixels: input[clientCaptureHeaderSize:],
+	}, nil
 }
 
 func updateConfigTarget(target any, config json.RawMessage) error {

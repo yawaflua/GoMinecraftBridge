@@ -9,8 +9,9 @@ import (
 )
 
 type helloPlugin struct {
-	hudDemoTick int64
-	hudVisible  bool
+	hudDemoTick       int64
+	hudVisible        bool
+	customScreenShown bool
 }
 
 func (plugin helloPlugin) AfterDamage(context *sdk.Context, event sdk.AfterDamageEvent) error {
@@ -86,6 +87,11 @@ func (plugin *helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTick
 	plugin.hudDemoTick++
 	switch plugin.hudDemoTick {
 	case 1:
+		if !plugin.customScreenShown {
+			context.OpenClientScreen(exampleCustomScreen())
+			plugin.customScreenShown = true
+		}
+
 		// Render independent retained elements. Named IDs let later calls update
 		// or remove one element without touching the others.
 		context.RenderHUD(sdk.HUDRectangle(
@@ -125,6 +131,85 @@ func (plugin *helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTick
 		// Repeat the complete draw/update/remove demonstration.
 		plugin.hudDemoTick = 0
 	}
+	return nil
+}
+
+func (helloPlugin) ClientScreenEvent(context *sdk.Context, event sdk.ClientScreenEvent) error {
+	if event.ScreenID != "hello-custom" || event.Type != "button" {
+		return nil
+	}
+
+	alias := event.Values["alias"]
+	theme := event.Values["theme"]
+	context.DisplayClientMessage(fmt.Sprintf(
+		"Custom screen action %q: alias=%q theme=%q",
+		event.ButtonID, alias, theme,
+	))
+	return nil
+}
+
+func exampleCustomScreen() sdk.ClientScreen {
+	return sdk.ClientScreen{
+		ID:    "hello-custom",
+		Title: "Custom Go screen",
+		Elements: []sdk.ClientScreenElement{
+			{
+				ID: "panel", Type: sdk.ClientScreenElementRectangle,
+				Anchor: sdk.HUDCenter, X: 0, Y: 0, Width: 360, Height: 220,
+				Color: 0xe0181820,
+			},
+			{
+				ID: "heading", Type: sdk.ClientScreenElementText,
+				Anchor: sdk.HUDCenter, X: 0, Y: -82,
+				Text: "This layout and its coordinates come from Go", Color: 0xff55ff55, Shadow: true,
+			},
+			{
+				ID: "alias-label", Type: sdk.ClientScreenElementText,
+				Anchor: sdk.HUDCenter, X: 0, Y: -48,
+				Text: "Alias", Color: 0xffdddddd,
+			},
+			{
+				ID: "alias", Type: sdk.ClientScreenElementTextInput,
+				Anchor: sdk.HUDCenter, X: 0, Y: -24, Width: 260, Height: 20,
+				Placeholder: "Type anything", MaxLength: 48,
+			},
+			{
+				ID: "theme", Type: sdk.ClientScreenElementSelect,
+				Anchor: sdk.HUDCenter, X: 0, Y: 16, Width: 260, Height: 20,
+				Value: "green",
+				Options: []sdk.ClientScreenOption{
+					{Value: "green", Label: "Green theme"},
+					{Value: "purple", Label: "Purple theme"},
+				},
+			},
+			{
+				ID: "apply-background", Type: sdk.ClientScreenElementRectangle,
+				Anchor: sdk.HUDCenter, X: -70, Y: 66, Width: 120, Height: 20,
+				Color: 0xff286c45,
+			},
+			{
+				ID: "apply-label", Type: sdk.ClientScreenElementText,
+				Anchor: sdk.HUDCenter, X: -70, Y: 66,
+				Text: "Apply custom hitbox", Color: 0xffffffff,
+			},
+			{
+				ID: "apply", Type: sdk.ClientScreenElementHitbox,
+				Anchor: sdk.HUDCenter, X: -70, Y: 66, Width: 120, Height: 20,
+			},
+			{
+				ID: "done", Type: sdk.ClientScreenElementButton,
+				Anchor: sdk.HUDCenter, X: 70, Y: 66, Width: 120, Height: 20,
+				Text: "Done", Close: true,
+			},
+		},
+	}
+}
+
+func (helloPlugin) ClientScreenCaptured(context *sdk.Context, capture sdk.ClientScreenCapture) error {
+	context.Log("info", fmt.Sprintf(
+		"captured screen: %dx%d stride=%d bytes=%d",
+		capture.Width, capture.Height, capture.Stride, len(capture.Pixels),
+	))
 	return nil
 }
 

@@ -13,6 +13,7 @@ type Context struct {
 	systemCalls []SystemCallRequest
 	logs        []LogEntry
 	snapshot    *SnapshotSubscription
+	client      bool
 }
 
 // Broadcast queues a message to be sent to all players.
@@ -44,6 +45,43 @@ func (context *Context) DisplayClientMessage(message string) {
 		Payload: map[string]any{
 			"message": message,
 		},
+	})
+}
+
+// OpenClientScreen opens or updates a client-local Minecraft form. The call is
+// ignored when this callback is running in a server runtime.
+func (context *Context) OpenClientScreen(screen ClientScreen) {
+	if !context.client {
+		return
+	}
+	context.actions = append(context.actions, ActionRequest{
+		Type:    "minecraft:client.screen.open",
+		Payload: screen,
+	})
+}
+
+// CloseClientScreen closes screenID if it is currently owned by this plugin.
+// The call is ignored when this callback is running in a server runtime.
+func (context *Context) CloseClientScreen(screenID string) {
+	if !context.client {
+		return
+	}
+	context.actions = append(context.actions, ActionRequest{
+		Type:    "minecraft:client.screen.close",
+		Payload: map[string]any{"id": screenID},
+	})
+}
+
+// CaptureClientScreen requests the current full framebuffer. A client runtime
+// later delivers RGBA8 pixels to ClientScreenCaptureHandler. Repeated requests
+// are coalesced, and server-runtime calls are ignored.
+func (context *Context) CaptureClientScreen() {
+	if !context.client {
+		return
+	}
+	context.actions = append(context.actions, ActionRequest{
+		Type:    "minecraft:client.screen.capture",
+		Payload: map[string]any{},
 	})
 }
 

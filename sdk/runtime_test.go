@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -8,6 +9,25 @@ import (
 )
 
 type testPlugin struct{}
+
+type clientFeatureTestPlugin struct {
+	capture ClientScreenCapture
+	event   ClientScreenEvent
+}
+
+func (plugin *clientFeatureTestPlugin) Metadata() Metadata {
+	return Metadata{ID: "client_feature", Name: "Client feature", Version: "1.0.0", Environment: PluginEnvironmentClient}
+}
+
+func (plugin *clientFeatureTestPlugin) ClientScreenCaptured(_ *Context, capture ClientScreenCapture) error {
+	plugin.capture = capture
+	return nil
+}
+
+func (plugin *clientFeatureTestPlugin) ClientScreenEvent(_ *Context, event ClientScreenEvent) error {
+	plugin.event = event
+	return nil
+}
 
 type decisionTestPlugin struct {
 	testPlugin
@@ -181,6 +201,76 @@ func TestDispatchClientTick(t *testing.T) {
 	if got.Actions[0].Type != "minecraft:client.chat.display" {
 		t.Fatalf("action type = %q", got.Actions[0].Type)
 	}
+}
+
+func TestClientScreenActionsAreClientOnly(t *testing.T) {
+	screen := ClientScreen{ID: "payment", Title: "Payment"}
+	server := &Context{}
+	server.OpenClientScreen(screen)
+	server.CloseClientScreen(screen.ID)
+	server.CaptureClientScreen()
+	if len(server.actions) != 0 {
+		t.Fatalf("server context queued client actions: %#v", server.actions)
+	}
+
+	client := &Context{client: true}
+	client.OpenClientScreen(screen)
+	client.CloseClientScreen(screen.ID)
+	client.CaptureClientScreen()
+	if len(client.actions) != 3 || client.actions[0].Type != "minecraft:client.screen.open" ||
+		client.actions[1].Type != "minecraft:client.screen.close" ||
+		client.actions[2].Type != "minecraft:client.screen.capture" {
+		t.Fatalf("unexpected client screen actions: %#v", client.actions)
+	}
+}
+
+func TestClientScopeMarkerCoversSharedOperations(t *testing.T) {
+	input := []byte(`{"runtimeEnvironment":"client","config":{}}`)
+	if !dispatchRunsOnClient(OperationConfigUpdate, input) {
+		t.Fatal("client-scoped config update was treated as a server callback")
+	}
+	if dispatchRunsOnClient(OperationConfigUpdate, []byte(`{"config":{}}`)) {
+		t.Fatal("unscoped config update was treated as a client callback")
+	}
+}
+
+func TestDispatchClientScreenEventAndCapture(t *testing.T) {
+	plugin := &clientFeatureTestPlugin{}
+	pluginMu.Lock()
+	registeredPlugin = plugin
+	pluginMu.Unlock()
+
+	event, _ := json.Marshal(ClientScreenEvent{ScreenID: "payment", Type: "button", ButtonID: "submit"})
+	Dispatch(OperationClientScreenEvent, event)
+	if plugin.event.ButtonID != "submit" {
+		t.Fatalf("screen event was not dispatched: %#v", plugin.event)
+	}
+
+	pixels := []byte{1, 2, 3, 4, 5, 6, 7, 8}
+	frame := make([]byte, clientCaptureHeaderSize+len(pixels))
+	copy(frame, "GMBC")
+	frame[4], frame[5] = 1, 1
+	binary.LittleEndian.PutUint32(frame[8:12], 2)
+	binary.LittleEndian.PutUint32(frame[12:16], 1)
+	binary.LittleEndian.PutUint32(frame[16:20], 8)
+	binary.LittleEndian.PutUint32(frame[20:24], uint32(len(pixels)))
+	copy(frame[clientCaptureHeaderSize:], pixels)
+	Dispatch(OperationClientScreenCapture, frame)
+	if plugin.capture.Width != 2 || plugin.capture.Height != 1 || !jsonBytesEqual(plugin.capture.Pixels, pixels) {
+		t.Fatalf("screen capture was not dispatched: %#v", plugin.capture)
+	}
+}
+
+func jsonBytesEqual(left, right []byte) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestSetHUDAction(t *testing.T) {

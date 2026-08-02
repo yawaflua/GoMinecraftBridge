@@ -3,8 +3,12 @@ package dev.yawaflua.gominecraftbridge.client.plugin;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import dev.yawaflua.gominecraftbridge.client.ClientHudState;
+import dev.yawaflua.gominecraftbridge.client.ClientScreenCaptureController;
+import dev.yawaflua.gominecraftbridge.client.ClientScreenController;
+import dev.yawaflua.gominecraftbridge.client.ClientProtocolInput;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
+import dev.yawaflua.gominecraftbridge.protocol.ClientScreenSpec;
 import dev.yawaflua.gominecraftbridge.protocol.HudElementDto;
 import dev.yawaflua.gominecraftbridge.protocol.HudScene;
 import dev.yawaflua.gominecraftbridge.protocol.PluginLog;
@@ -24,10 +28,19 @@ public final class ClientPluginResponseHandler {
 
 	private final Logger logger;
 	private final ClientHudState hud;
+	private final ClientScreenController screens;
+	private final ClientScreenCaptureController captures;
 
-	public ClientPluginResponseHandler(Logger logger, ClientHudState hud) {
+	public ClientPluginResponseHandler(
+			Logger logger,
+			ClientHudState hud,
+			ClientScreenController screens,
+			ClientScreenCaptureController captures
+	) {
 		this.logger = logger;
 		this.hud = hud;
+		this.screens = screens;
+		this.captures = captures;
 	}
 
 	public void invoke(LoadedPlugin plugin, Protocol.Operation operation, Object input, Minecraft client) {
@@ -75,7 +88,7 @@ public final class ClientPluginResponseHandler {
 			);
 			try {
 				process(plugin, plugin.invoke(
-						Protocol.Operation.SYSTEM_CALL_RESULT, unavailable
+						Protocol.Operation.SYSTEM_CALL_RESULT, ClientProtocolInput.scoped(unavailable)
 				), client, systemCallDepth + 1);
 			} catch (RuntimeException exception) {
 				disable(plugin, "client system call result callback failed", exception);
@@ -87,6 +100,8 @@ public final class ClientPluginResponseHandler {
 	public void disable(LoadedPlugin plugin, String reason, Throwable throwable) {
 		plugin.disable();
 		this.hud.clear(plugin.metadata().id());
+		this.captures.clear(plugin);
+		this.screens.clear(plugin, Minecraft.getInstance());
 		bridgeLog(plugin, "error", "Plugin disabled: " + reason
 				+ (throwable == null ? "" : " — " + rootMessage(throwable)));
 		if (throwable == null) {
@@ -109,6 +124,28 @@ public final class ClientPluginResponseHandler {
 	}
 
 	private void executeAction(LoadedPlugin plugin, ActionRequest action, Minecraft client) {
+		if ("minecraft:client.screen.open".equals(action.type())) {
+			try {
+				ClientScreenSpec screen = ProtocolJson.GSON.fromJson(action.payload(), ClientScreenSpec.class);
+				this.screens.open(plugin, screen, client);
+			} catch (RuntimeException exception) {
+				bridgeLog(plugin, "warn", "Rejected malformed client screen: " + rootMessage(exception));
+			}
+			return;
+		}
+		if ("minecraft:client.screen.close".equals(action.type())) {
+			JsonElement id = action.payload() == null ? null : action.payload().get("id");
+			if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
+				bridgeLog(plugin, "warn", "Rejected client screen close without an id");
+			} else {
+				this.screens.close(plugin, id.getAsString(), client, true);
+			}
+			return;
+		}
+		if ("minecraft:client.screen.capture".equals(action.type())) {
+			this.captures.request(plugin);
+			return;
+		}
 		if ("minecraft:client.hud.set".equals(action.type())) {
 			try {
 				HudScene scene = ProtocolJson.GSON.fromJson(action.payload(), HudScene.class);

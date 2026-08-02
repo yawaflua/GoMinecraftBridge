@@ -42,6 +42,8 @@ panics are represented in the JSON response rather than the C status.
 | 11 | after damage | `AfterDamageEvent` |
 | 12 | allow death | `AllowDeathEvent`; boolean decision in response `data` |
 | 13 | mob conversion | `MobConversionEvent` |
+| 14 | client screen event | `ClientScreenEvent` JSON |
+| 15 | client screen capture | binary `GMBC` framebuffer |
 
 Operations 10 and 12 are synchronous Fabric decisions. A plugin that does not
 implement the matching handler returns `true` automatically. Handler errors,
@@ -67,9 +69,13 @@ Every successful transport response uses this envelope:
 panic. An ordinary handler error is logged but does not disable an already-running
 plugin.
 
-All inputs except operation 3 are UTF-8 JSON. Server tick input follows
+All inputs except operations 3 and 15 are UTF-8 JSON. Server tick input follows
 [`schema/tick_snapshot.fbs`](../schema/tick_snapshot.fbs) and includes the
-FlatBuffers file identifier `GMBS`. Responses remain UTF-8 JSON because action,
+FlatBuffers file identifier `GMBS`. Operation 15 starts with a 24-byte
+little-endian header: `GMBC`, version byte `1`, format byte `1` (`RGBA8`), two
+reserved bytes, then `uint32` width, height, row stride, and payload length.
+Tightly packed top-to-bottom RGBA bytes follow the header. Frames are limited
+to 16 million pixels and 64 MiB. Responses remain UTF-8 JSON because action,
 log, subscription, and system-call batches are normally small. A native library
 compiled against ABI v1 is rejected by an ABI v2 host before initialization.
 
@@ -106,11 +112,18 @@ tick JSON contains the tick number, connection state, remote address, local
 player UUID/name, and current dimension; world-dependent strings are absent
 outside a world.
 
-The client runtime accepts only the `minecraft:client.chat.display` action,
-queued by `Context.DisplayClientMessage`. Server actions, snapshot subscriptions,
-and system calls are rejected locally and are never forwarded to the connected
-server. `InitEvent.runtimeEnvironment` tells a `both` plugin which host invoked
-it (`server` or `client`).
+The client runtime accepts local chat, retained HUD, custom retained screens,
+and framebuffer-capture actions. `Context.OpenClientScreen` accepts an ordered
+scene of anchored text, rectangles, hitboxes and native input widgets, then
+reports interactions through operation 14. `Context.CaptureClientScreen`
+does not return synchronously: the runtime coalesces pending requests, captures
+one framebuffer, and invokes operation 15 with RGBA8 bytes. The Go slice is valid
+only during `ClientScreenCaptured`. These Context methods add no action when the
+same plugin callback runs under a server host.
+
+Server actions, snapshot subscriptions, and system calls are rejected locally
+and are never forwarded to the connected server. `InitEvent.runtimeEnvironment`
+tells a `both` plugin which host invoked it (`server` or `client`).
 
 The Paper/Purpur host implements the server side of the same ABI without a
 separate Go SDK. Native packages are discovered under

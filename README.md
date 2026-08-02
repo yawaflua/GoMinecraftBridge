@@ -27,7 +27,8 @@ The current MVP also targets:
 - chat broadcast/direct-message actions;
 - extensible namespaced system calls;
 - capture of Go `stdout`, `stderr`, and the standard `log` package;
-- FlatBuffers tick snapshots (ABI v2), while control-plane messages remain JSON;
+- FlatBuffers tick snapshots and bounded binary framebuffer captures (ABI v2),
+  while ordinary control-plane messages remain JSON;
 - a Cloth Config management screen exposed through Mod Menu.
 
 The backend interface is deliberately independent from Fabric and native FFI so
@@ -136,8 +137,8 @@ and `client-plugins` directories. New installations and all newly written data
 use `config/gbm`.
 
 The client runtime emits `Init`, `ClientTick`, and `Deinit`, captures plugin
-logs, supports local rescan/reload, and permits only the local
-`minecraft:client.chat.display` and retained `minecraft:client.hud.set` actions.
+logs, supports local rescan/reload, and permits local chat, retained HUD,
+custom retained screens, and framebuffer capture actions.
 The HUD action supports text and filled rectangles in GUI-scaled pixels, with
 screen anchors and ARGB colors. Server actions, snapshot subscriptions,
 and system calls are rejected in a client process, so a client plugin cannot use
@@ -165,6 +166,55 @@ notice := sdk.HUDText("Saved", 8, 8, 0xffffffff, true, sdk.HUDTopRight).
 ctx.RenderHUD(notice)          // create or update by ID
 ctx.RemoveHUD("save-notice") // remove immediately
 ```
+
+Client plugins can compose a custom screen from freely positioned retained
+elements. Every element has GUI-scaled coordinates, dimensions and a screen
+anchor. Rectangles and text provide custom visuals; invisible hitboxes make any
+composition clickable; vanilla buttons, inputs and selects are available when
+native widgets are useful. Events are delivered to `ClientScreenEventHandler`:
+
+```go
+ctx.OpenClientScreen(sdk.ClientScreen{
+    ID: "custom", Title: "Custom screen",
+    Elements: []sdk.ClientScreenElement{
+        {
+            ID: "panel", Type: sdk.ClientScreenElementRectangle,
+            Anchor: sdk.HUDCenter, Width: 300, Height: 180,
+            Color: 0xe0181820,
+        },
+        {
+            ID: "caption", Type: sdk.ClientScreenElementText,
+            Anchor: sdk.HUDCenter, Y: -50,
+            Text: "Rendered from a Go scene", Color: 0xff55ff55,
+        },
+        {
+            ID: "action", Type: sdk.ClientScreenElementHitbox,
+            Anchor: sdk.HUDCenter, Y: 40, Width: 120, Height: 20,
+        },
+    },
+})
+```
+
+Elements are painted in slice order. Calling `OpenClientScreen` again with the
+same ID replaces the retained scene, so event handlers can implement arbitrary
+stateful UI. `Fields` and `Buttons` remain shorthand for a conventional form;
+they do not constrain screens built through `Elements`.
+
+`CaptureClientScreen` requests the current complete framebuffer without a
+request ID. The result arrives as top-to-bottom RGBA8 bytes; it is not a PNG,
+Base64 value, or pre-decoded QR code:
+
+```go
+func (myPlugin) ClientScreenCaptured(ctx *sdk.Context, capture sdk.ClientScreenCapture) error {
+    pixels := capture.Pixels // valid during this callback
+    _ = pixels
+    return nil
+}
+```
+
+The runtime coalesces repeated requests from a plugin while a capture is in
+progress. Screen and capture methods are no-ops in a server callback, including
+the server side of an `environment=both` plugin.
 
 Native access must be enabled for the unnamed Java module:
 
@@ -360,6 +410,8 @@ Actions are fire-and-forget operations implemented by the bridge:
 - `minecraft:chat.broadcast`;
 - `minecraft:chat.player`;
 - `minecraft:client.chat.display` via `ctx.DisplayClientMessage(...)` (client runtime only).
+- `minecraft:client.screen.open` and `.close` via the typed screen API;
+- `minecraft:client.screen.capture` via `ctx.CaptureClientScreen()`.
 
 System calls return a result to the plugin's `SystemCallResult` callback. Built-in
 calls currently include:

@@ -18,6 +18,18 @@ type ClientTickHandler interface {
 	ClientTick(context *Context, event ClientTickEvent) error
 }
 
+// ClientScreenEventHandler receives interactions from a screen opened by the
+// plugin. It is invoked only by a client native runtime.
+type ClientScreenEventHandler interface {
+	ClientScreenEvent(context *Context, event ClientScreenEvent) error
+}
+
+// ClientScreenCaptureHandler receives framebuffer bytes requested with
+// Context.CaptureClientScreen. Pixels is valid only during this callback.
+type ClientScreenCaptureHandler interface {
+	ClientScreenCaptured(context *Context, capture ClientScreenCapture) error
+}
+
 // ConfigUpdateHandler runs after the SDK has updated a pointer stored in
 // Metadata.ConfigSchema. It is optional for pointer-backed configurations and
 // required when ConfigSchema is a schema/map rather than an updateable pointer.

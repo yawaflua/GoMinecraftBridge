@@ -26,7 +26,11 @@ public final class Protocol {
 		/** Lets a server plugin allow or deny a living entity's death. */
 		ALLOW_DEATH(12),
 		/** Reports a mob being replaced by its converted form. */
-		MOB_CONVERSION(13);
+		MOB_CONVERSION(13),
+		/** Reports a client-local form interaction. */
+		CLIENT_SCREEN_EVENT(14),
+		/** Delivers a binary GMBC framebuffer to a client plugin. */
+		CLIENT_SCREEN_CAPTURE(15);
 
 		private final int code;
 

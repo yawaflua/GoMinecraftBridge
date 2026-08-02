@@ -15,7 +15,7 @@ native plugin registry ---- protocol records ---- native backend
         +---- package scanner
 
 client runtime
-  +---- local plugin manager ---- response/action handler ---- HUD state
+  +---- local plugin manager ---- response/action handler ---- HUD/screen/capture state
   +---- catalog task controller ---- catalog service ---- backend API
   +---- Mod Menu adapter
   +---- Cloth screen sections
@@ -37,6 +37,9 @@ client runtime
   screens read snapshots instead of owning worker threads or network calls.
 - `client/plugin`: local configuration persistence and interpretation of plugin
   responses/actions.
+- `client` screen/capture controllers: ownership and validation of custom
+  retained UI scenes plus bounded binary framebuffer delivery. Minecraft API differences stay
+  in the version-specific client overlays.
 - `client/ui`: small Cloth Config sections. `ClothManagementScreen` only
   composes these sections.
 - `paper`: Bukkit/Paper-specific event, snapshot, action, and messaging adapters.

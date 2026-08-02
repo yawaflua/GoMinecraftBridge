@@ -12,6 +12,7 @@ import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ClientScreenEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ConfigUpdateEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
 import dev.yawaflua.gominecraftbridge.protocol.InitEvent;
@@ -40,6 +41,8 @@ public final class ClientGoPluginManager {
 	private final NativePluginRegistry registry;
 	private final ClientPluginConfigStore configStore;
 	private final ClientHudState hud = new ClientHudState();
+	private final ClientScreenController screens;
+	private final ClientScreenCaptureController captures;
 	private final ClientPluginResponseHandler responses;
 	private long tick;
 	private boolean running;
@@ -51,7 +54,12 @@ public final class ClientGoPluginManager {
 		this.legacyPluginDirectory = config.resolve("go-minecraft-bridge").resolve("client-plugins");
 		this.managedPluginDirectory = root.resolve("client-plugins");
 		this.configStore = new ClientPluginConfigStore(root.resolve("client-data"));
-		this.responses = new ClientPluginResponseHandler(logger, this.hud);
+		this.screens = new ClientScreenController(this::handleScreenEvent);
+		this.captures = new ClientScreenCaptureController(
+				this::handleScreenCapture,
+				this::handleCaptureWarning
+		);
+		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures);
 		this.registry = new NativePluginRegistry(new NativePackageScanner(List.of(
 				new NativePackageScanner.SearchRoot(this.legacyPluginDirectory, true),
 				new NativePackageScanner.SearchRoot(this.managedPluginDirectory, true)
@@ -104,17 +112,19 @@ public final class ClientGoPluginManager {
 	public synchronized void tick(Minecraft client) {
 		this.tick++;
 		this.hud.pruneExpired();
+		this.screens.tick(client);
 		for (LoadedPlugin plugin : runningPlugins()) {
 			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TICK, createTick(client), client);
 		}
+		this.captures.tick(client);
 	}
 
 	public synchronized void stop(Minecraft client) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			try {
-				PluginResponse response = plugin.invoke(
-						Protocol.Operation.DEINIT,
-						new DeinitEvent("client_stopping")
+					PluginResponse response = plugin.invoke(
+							Protocol.Operation.DEINIT,
+							ClientProtocolInput.scoped(new DeinitEvent("client_stopping"))
 				);
 				this.responses.process(plugin, response, client);
 			} catch (RuntimeException exception) {
@@ -122,10 +132,13 @@ public final class ClientGoPluginManager {
 				this.logger.error("Client Go plugin {} failed during deinit", plugin.metadata().id(), exception);
 			} finally {
 				this.hud.clear(plugin.metadata().id());
+				this.captures.clear(plugin);
+				this.screens.clear(plugin, client);
 				plugin.markStopped();
 			}
 		}
 		this.running = false;
+		this.captures.close();
 	}
 
 	public synchronized ReloadResult rescan() {
@@ -142,14 +155,16 @@ public final class ClientGoPluginManager {
 		}
 		if (plugin.state() == PluginState.RUNNING) {
 			try {
-				this.responses.process(plugin, plugin.invoke(
-						Protocol.Operation.DEINIT, new DeinitEvent("client_admin_reload")
+					this.responses.process(plugin, plugin.invoke(
+							Protocol.Operation.DEINIT, ClientProtocolInput.scoped(new DeinitEvent("client_admin_reload"))
 				), client);
 			} catch (RuntimeException exception) {
 				this.responses.bridgeLog(plugin, "error", "Client reload deinit failed: " + ClientPluginResponseHandler.rootMessage(exception));
 			}
 		}
 		this.hud.clear(pluginId);
+		this.captures.clear(plugin);
+		this.screens.clear(plugin, client);
 		plugin.prepareReload();
 		boolean started = startPlugin(plugin);
 		return new ReloadResult(started, started
@@ -172,7 +187,7 @@ public final class ClientGoPluginManager {
 		try {
 			PluginResponse response = plugin.invoke(
 					Protocol.Operation.CONFIG_UPDATE,
-					new ConfigUpdateEvent(submitted.getAsJsonObject())
+					ClientProtocolInput.scoped(new ConfigUpdateEvent(submitted.getAsJsonObject()))
 			);
 			this.responses.process(plugin, response, client);
 			if (response.isError()) {
@@ -252,7 +267,7 @@ public final class ClientGoPluginManager {
 			}
 			PluginResponse response = plugin.invoke(
 					Protocol.Operation.CONFIG_UPDATE,
-					new ConfigUpdateEvent(saved)
+					ClientProtocolInput.scoped(new ConfigUpdateEvent(saved))
 			);
 			this.responses.process(plugin, response, client);
 			if (response.isError()) {
@@ -280,6 +295,31 @@ public final class ClientGoPluginManager {
 				this.tick, Instant.now().toEpochMilli(), connected, address,
 				playerUuid, playerName, dimension
 		);
+	}
+
+	private synchronized void handleScreenEvent(LoadedPlugin plugin, ClientScreenEvent event) {
+		if (plugin.state() == PluginState.RUNNING) {
+			this.responses.invoke(plugin, Protocol.Operation.CLIENT_SCREEN_EVENT, event, Minecraft.getInstance());
+		}
+	}
+
+	private synchronized void handleScreenCapture(LoadedPlugin plugin, byte[] frame) {
+		if (plugin.state() != PluginState.RUNNING) {
+			return;
+		}
+		try {
+			this.responses.process(
+					plugin,
+					plugin.invokeRaw(Protocol.Operation.CLIENT_SCREEN_CAPTURE, frame),
+					Minecraft.getInstance()
+			);
+		} catch (RuntimeException exception) {
+			this.responses.disable(plugin, "client screen capture callback failed", exception);
+		}
+	}
+
+	private synchronized void handleCaptureWarning(LoadedPlugin plugin, String message) {
+		this.responses.bridgeLog(plugin, "warn", message);
 	}
 
 	private List<LoadedPlugin> runningPlugins() {

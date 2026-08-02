@@ -53,6 +53,17 @@ public final class LoadedPlugin {
 		return invokeUnchecked(operation, input);
 	}
 
+	public synchronized PluginResponse invokeRaw(Protocol.Operation operation, byte[] input) {
+		if (this.state == PluginState.DISABLED || this.state == PluginState.STOPPED) {
+			throw new IllegalStateException("Plugin " + this.metadata.id() + " is not active");
+		}
+		byte[] output = this.backend.call(operation, input == null ? new byte[0] : input);
+		if (output.length == 0) {
+			throw new IllegalArgumentException("Plugin returned an empty response for " + operation);
+		}
+		return ProtocolJson.decode(output, PluginResponse.class);
+	}
+
 	private PluginResponse invokeUnchecked(Protocol.Operation operation, Object input) {
 		byte[] encodedInput;
 		if (operation == Protocol.Operation.TICK && input instanceof ServerSnapshot snapshot) {

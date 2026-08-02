@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.nio.file.Path;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -85,6 +87,14 @@ final class NativePluginBackendTest {
 		);
 		assertEquals("ok", clientTick.status());
 		assertEquals("minecraft:client.chat.display", clientTick.actions().getFirst().type());
+
+		ByteBuffer capture = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN);
+		capture.put(new byte[]{'G', 'M', 'B', 'C', 1, 1, 0, 0});
+		capture.putInt(2).putInt(1).putInt(8).putInt(8);
+		capture.put(new byte[]{1, 2, 3, 4, 5, 6, 7, 8});
+		PluginResponse captured = plugin.invokeRaw(Protocol.Operation.CLIENT_SCREEN_CAPTURE, capture.array());
+		assertEquals("ok", captured.status());
+		assertEquals("captured screen: 2x1 stride=8 bytes=8", captured.logs().getFirst().message());
 
 		PluginResponse deinit = plugin.invoke(
 				Protocol.Operation.DEINIT,
