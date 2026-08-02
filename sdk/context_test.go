@@ -13,8 +13,8 @@ func TestSystemCallUsesBuiltInType(t *testing.T) {
 	if len(context.systemCalls) != 1 {
 		t.Fatalf("got %d queued calls, want 1", len(context.systemCalls))
 	}
-	if got := context.systemCalls[0].Name; got != "minecraft:get_entity" {
-		t.Fatalf("queued call name = %q, want %q", got, "minecraft:get_entity")
+	if got := context.systemCalls[0].Name; got != "minecraft:entity.get" {
+		t.Fatalf("queued call name = %q, want %q", got, "minecraft:entity.get")
 	}
 }
 
