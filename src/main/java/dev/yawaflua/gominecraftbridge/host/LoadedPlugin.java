@@ -167,7 +167,7 @@ public final class LoadedPlugin {
 		}
 		JsonObject object = rawMetadata.getAsJsonObject();
 		if (!object.has("environment") || object.get("environment").isJsonNull()) {
-			return;
+			throw new IllegalArgumentException("Plugin environment is required by ABI " + Protocol.ABI_VERSION);
 		}
 		JsonElement value = object.get("environment");
 		if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {

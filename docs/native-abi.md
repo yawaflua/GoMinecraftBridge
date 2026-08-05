@@ -1,4 +1,4 @@
-# Native ABI v2
+# Native ABI v3
 
 Every native plugin is a Go `main` package built with `-buildmode=c-shared` and
 exports three C symbols:
@@ -44,11 +44,44 @@ panics are represented in the JSON response rather than the C status.
 | 13 | mob conversion | `MobConversionEvent` |
 | 14 | client screen event | `ClientScreenEvent` JSON |
 | 15 | client screen capture | binary `GMBC` framebuffer |
+| 16 | interaction | `InteractionEvent` |
+| 17 | action result | `ActionResult` |
+| 18 | player join | `PlayerConnectionEvent` |
+| 19 | player disconnect | `PlayerConnectionEvent` |
+| 20 | allow chat | `ChatEvent`; boolean decision in response `data` |
 
-Operations 10 and 12 are synchronous Fabric decisions. A plugin that does not
-implement the matching handler returns `true` automatically. Handler errors,
-panics, malformed decisions, and transport failures are also fail-open; an
-event is denied when at least one successfully invoked plugin returns `false`.
+Operations 10, 12, and 20 are synchronous decisions. Damage and death decisions
+are Fabric-only; chat decisions are supported by Fabric and Paper. A plugin that
+does not implement the matching handler returns `true` automatically. Handler
+errors, panics, malformed decisions, and transport failures are also fail-open;
+an event is denied when at least one successfully invoked plugin returns `false`.
+
+Operation 11 is emitted by both Fabric and Paper. Paper reports Bukkit's base
+and final damage at `MONITOR` priority; `blocked` is true when positive base
+damage was reduced to zero. Fabric additionally exposes the pre-damage decision
+and mob-conversion events.
+
+Operation 16 observes `use_block`, `attack_block`, `use_entity`, and
+`attack_entity` without cancelling the vanilla action. It includes the hand,
+sneaking state, player snapshot, clicked block or entity snapshot, block face,
+and hit coordinates when the platform provides them. Fabric emits it in both
+server and client runtimes; Paper emits authoritative server interactions.
+
+Operation 17 acknowledges an action that contains an `id`. Its JSON input
+contains the original `id` and `type`, a `success` boolean, and an optional
+`error`. Action-result and system-call-result callbacks may emit more work; the
+host limits the combined callback chain to 32 levels.
+
+Operations 18 and 19 are server-only notifications. Both carry the player's
+complete `EntitySnapshot` and an event timestamp. Join is emitted after the
+connection has been established; disconnect is emitted while the platform can
+still create the departing player's snapshot. Handler errors are reported like
+other observational events and do not affect the connection lifecycle.
+
+Operation 20 runs before operation 4. If every decision allows the message,
+the platform broadcasts it normally and then emits the observational chat
+callback. If any plugin returns `false`, the platform cancels the message and
+does not emit operation 4 for it.
 
 Every successful transport response uses this envelope:
 
@@ -59,7 +92,13 @@ Every successful transport response uses this envelope:
   "stack": "",
   "data": null,
   "logs": [],
-  "actions": [],
+  "actions": [
+    {
+      "id": "action-1",
+      "type": "minecraft:chat.player",
+      "payload": {"playerUuid": "...", "message": "hello"}
+    }
+  ],
   "systemCalls": [],
   "snapshot": null
 }
@@ -69,6 +108,11 @@ Every successful transport response uses this envelope:
 panic. An ordinary handler error is logged but does not disable an already-running
 plugin.
 
+`InitEvent.capabilities` is the runtime's immutable list of supported events,
+actions, and system calls. A `both` plugin should use `InitEvent.Supports`
+before relying on optional or platform-specific functionality. Fabric server,
+Fabric client, and Paper intentionally advertise different lists.
+
 All inputs except operations 3 and 15 are UTF-8 JSON. Server tick input follows
 [`schema/tick_snapshot.fbs`](../schema/tick_snapshot.fbs) and includes the
 FlatBuffers file identifier `GMBS`. Operation 15 starts with a 24-byte
@@ -77,7 +121,8 @@ reserved bytes, then `uint32` width, height, row stride, and payload length.
 Tightly packed top-to-bottom RGBA bytes follow the header. Frames are limited
 to 16 million pixels and 64 MiB. Responses remain UTF-8 JSON because action,
 log, subscription, and system-call batches are normally small. A native library
-compiled against ABI v1 is rejected by an ABI v2 host before initialization.
+compiled against any earlier ABI is rejected by an ABI v3 host before
+initialization.
 
 All memory ownership stays on its allocating side. Java objects, Go pointers,
 and Go structs never cross the boundary.
@@ -99,10 +144,10 @@ configuration object.
 
 ## Plugin environment metadata
 
-The metadata response may contain an `environment` field with one of `server`,
-`client`, or `both`. Server hosts execute `server` and `both` plugins; client
-hosts execute `client` and `both` plugins. Metadata without this field predates
-the declaration and is treated as `server`, so adding it does not change ABI v2.
+The metadata response contains an `environment` field with one of `server`,
+`client`, or `both`. The `server`, `client`, and `dual` SDK registration
+packages set it automatically. Server hosts execute `server` and `both`
+plugins; client hosts execute `client` and `both` plugins.
 
 Client libraries are loaded from
 `config/gbm/client-plugins`; their persistent data is isolated under
@@ -113,20 +158,19 @@ player UUID/name, and current dimension; world-dependent strings are absent
 outside a world.
 
 The client runtime accepts local chat, retained HUD, custom retained screens,
-and framebuffer-capture actions. `Context.OpenClientScreen` accepts an ordered
+and framebuffer-capture actions. `client.Context.OpenScreen` accepts an ordered
 scene of anchored text, rectangles, hitboxes and native input widgets, then
-reports interactions through operation 14. `Context.CaptureClientScreen`
+reports interactions through operation 14. `client.Context.CaptureScreen`
 does not return synchronously: the runtime coalesces pending requests, captures
 one framebuffer, and invokes operation 15 with RGBA8 bytes. The Go slice is valid
-only during `ClientScreenCaptured`. These Context methods add no action when the
-same plugin callback runs under a server host.
+only during `ScreenCaptured`.
 
 Server actions, snapshot subscriptions, and system calls are rejected locally
 and are never forwarded to the connected server. `InitEvent.runtimeEnvironment`
-tells a `both` plugin which host invoked it (`server` or `client`).
+tells the dual adapter which plugin part to invoke (`server` or `client`).
 
-The Paper/Purpur host implements the server side of the same ABI without a
-separate Go SDK. Native packages are discovered under
+The Paper/Purpur host implements the server side of the same ABI through the
+`sdk/server` package. Native packages are discovered under
 `plugins/GBM/plugins`, and receive `runtimeEnvironment=server`.
 The public Bukkit/Paper API supplies entity/block snapshots, actions, and the
 built-in Minecraft system calls, so native plugin binaries can be moved between

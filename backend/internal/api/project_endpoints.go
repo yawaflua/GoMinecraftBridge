@@ -17,6 +17,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const supportedNativeProtocolVersion = "3"
+
 func (service *Service) CreateProject(
 	ctx context.Context,
 	request *projectv1.CreateProjectRequest,
@@ -362,6 +364,12 @@ func (service *Service) UploadProjectVersion(
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "valid version metadata is required")
 	}
+	expectedProtocol := supportedNativeProtocolVersion
+	if request.Metadata.AbiVersion != expectedProtocol || request.Metadata.ApiVersion != expectedProtocol {
+		return nil, status.Errorf(
+			codes.InvalidArgument, "abi_version and api_version must both be %s", expectedProtocol,
+		)
+	}
 	contentType := request.Archive.ContentType
 	if contentType == "" {
 		contentType = "application/octet-stream"
@@ -430,6 +438,13 @@ func (service *Service) UpdateVersionMetadata(
 	update, ok := metadataFromProto(request.Metadata)
 	if !ok && maskContains(request.UpdateMask, "environment") {
 		return nil, status.Error(codes.InvalidArgument, "valid environment is required")
+	}
+	expectedProtocol := supportedNativeProtocolVersion
+	if maskContains(request.UpdateMask, "abi_version") && request.Metadata.AbiVersion != expectedProtocol {
+		return nil, status.Errorf(codes.InvalidArgument, "abi_version must be %s", expectedProtocol)
+	}
+	if maskContains(request.UpdateMask, "api_version") && request.Metadata.ApiVersion != expectedProtocol {
+		return nil, status.Errorf(codes.InvalidArgument, "api_version must be %s", expectedProtocol)
 	}
 	metadata := current.Metadata
 	if maskContains(request.UpdateMask, "slug") {

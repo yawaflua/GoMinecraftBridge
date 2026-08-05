@@ -1,7 +1,6 @@
 package dev.yawaflua.gominecraftbridge.client.runtime;
 
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParseException;
 import com.terraformersmc.modmenu.api.UpdateChannel;
 import dev.yawaflua.gominecraftbridge.catalog.CatalogSettings;
 import dev.yawaflua.gominecraftbridge.catalog.CatalogUpdate;
@@ -15,9 +14,7 @@ import dev.yawaflua.gominecraftbridge.client.catalog.CatalogTaskController;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
-import dev.yawaflua.gominecraftbridge.network.AdminRequestPayload;
-import dev.yawaflua.gominecraftbridge.protocol.ProtocolJson;
-import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import dev.yawaflua.gominecraftbridge.protocol.InteractionEvent;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
@@ -35,8 +32,6 @@ public final class GbmClientRuntime implements AutoCloseable {
 	private final GbmModMenuAdapter modMenu = new GbmModMenuAdapter();
 	private final CatalogTaskController catalogTasks;
 	private final Set<String> catalogUpdateCheckers = new HashSet<>();
-	private volatile BridgeManagementSnapshot remoteSnapshot;
-	private volatile ServerConnectionStatus connectionStatus = ServerConnectionStatus.DISCONNECTED;
 	private Runnable updateListener;
 
 	public GbmClientRuntime() {
@@ -74,6 +69,10 @@ public final class GbmClientRuntime implements AutoCloseable {
 
 	public void tick(Minecraft client) {
 		this.plugins.tick(client);
+	}
+
+	public void interaction(InteractionEvent event) {
+		this.plugins.interaction(event, Minecraft.getInstance());
 	}
 
 	public ClientHudState hud() {
@@ -121,85 +120,12 @@ public final class GbmClientRuntime implements AutoCloseable {
 		return this.catalogTasks.settings();
 	}
 
-	public BridgeManagementSnapshot remoteSnapshot() {
-		return this.remoteSnapshot;
-	}
-
-	public ServerConnectionStatus connectionStatus() {
-		return this.connectionStatus;
-	}
-
-	public boolean remoteChannelAvailable() {
-		return this.connectionStatus == ServerConnectionStatus.AVAILABLE;
-	}
-
-	public void receiveRemoteSnapshot(String json) {
-		try {
-			this.remoteSnapshot = ProtocolJson.GSON.fromJson(json, BridgeManagementSnapshot.class);
-		} catch (JsonParseException exception) {
-			this.remoteSnapshot = new BridgeManagementSnapshot(
-					System.currentTimeMillis(), false, false,
-					"Invalid GBM management response: " + exception.getMessage(), null, null
-			);
-		}
-		this.connectionStatus = ServerConnectionStatus.AVAILABLE;
-		notifyUpdate();
-	}
-
-	public void connecting() {
-		resetConnection(ServerConnectionStatus.CONNECTING);
-	}
-
-	public void joinedServer() {
-		this.remoteSnapshot = null;
-		this.connectionStatus = ClientPlayNetworking.canSend(AdminRequestPayload.TYPE)
-				? ServerConnectionStatus.AVAILABLE
-				: ServerConnectionStatus.UNSUPPORTED;
-		notifyUpdate();
-		if (remoteChannelAvailable()) {
-			requestRemoteRefresh();
-		}
-	}
-
-	public void disconnected() {
-		resetConnection(ServerConnectionStatus.DISCONNECTED);
-	}
-
-	public boolean requestRemoteRefresh() {
-		return sendRemote("refresh", "");
-	}
-
-	public boolean requestRemoteReload(String pluginId) {
-		return sendRemote("reload", pluginId);
-	}
-
-	public boolean requestRemoteRescan() {
-		return sendRemote("rescan", "");
-	}
-
 	public void onUpdate(Runnable listener) {
 		this.updateListener = listener;
 	}
 
 	public void refreshModMenu() {
 		this.modMenu.synchronize(localPlugins().plugins());
-	}
-
-	private boolean sendRemote(String action, String pluginId) {
-		if (!ClientPlayNetworking.canSend(AdminRequestPayload.TYPE)) {
-			if (this.connectionStatus != ServerConnectionStatus.DISCONNECTED) {
-				this.connectionStatus = ServerConnectionStatus.UNSUPPORTED;
-			}
-			return false;
-		}
-		ClientPlayNetworking.send(new AdminRequestPayload(action, pluginId));
-		return true;
-	}
-
-	private void resetConnection(ServerConnectionStatus status) {
-		this.remoteSnapshot = null;
-		this.connectionStatus = status;
-		notifyUpdate();
 	}
 
 	private void rescanCatalogPackages() {

@@ -2,17 +2,18 @@ package dev.yawaflua.gominecraftbridge.fabric;
 
 import dev.yawaflua.gominecraftbridge.host.GoPluginManager;
 import dev.yawaflua.gominecraftbridge.host.MinecraftSnapshotFactory;
-import dev.yawaflua.gominecraftbridge.network.BridgeAdminNetworking;
 import dev.yawaflua.gominecraftbridge.protocol.AfterDamageEvent;
 import dev.yawaflua.gominecraftbridge.protocol.AllowDamageEvent;
 import dev.yawaflua.gominecraftbridge.protocol.AllowDeathEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeathEvent;
 import dev.yawaflua.gominecraftbridge.protocol.MobConversionEvent;
+import dev.yawaflua.gominecraftbridge.protocol.PlayerConnectionEvent;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import org.slf4j.Logger;
 
 import java.time.Instant;
@@ -27,10 +28,17 @@ public final class GbmFabricServerRuntime {
 	}
 
 	public void register() {
-		BridgeAdminNetworking.register(this.plugins);
 		registerLifecycle();
 		registerChat();
+		registerPlayerConnections();
+		registerInteractions();
 		registerLivingEntityEvents();
+	}
+
+	private void registerInteractions() {
+		GbmFabricInteractionAdapter.register(false, (event, player) ->
+				this.plugins.interaction(event, player.level().getServer())
+		);
 	}
 
 	private void registerLifecycle() {
@@ -41,6 +49,15 @@ public final class GbmFabricServerRuntime {
 	}
 
 	private void registerChat() {
+		ServerMessageEvents.ALLOW_CHAT_MESSAGE.register((message, sender, boundChatType) -> this.plugins.allowChat(
+				new ChatEvent(
+						sender.getUUID().toString(),
+						sender.getName().getString(),
+						message.signedContent(),
+						Instant.now().toEpochMilli()
+				),
+				sender.level().getServer()
+		));
 		ServerMessageEvents.CHAT_MESSAGE.register((message, sender, boundChatType) -> this.plugins.chat(
 				new ChatEvent(
 						sender.getUUID().toString(),
@@ -49,6 +66,23 @@ public final class GbmFabricServerRuntime {
 						Instant.now().toEpochMilli()
 				),
 				sender.level().getServer()
+		));
+	}
+
+	private void registerPlayerConnections() {
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> this.plugins.playerJoin(
+				new PlayerConnectionEvent(
+						this.snapshots.entity(handler.getPlayer()),
+						Instant.now().toEpochMilli()
+				),
+				server
+		));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> this.plugins.playerDisconnect(
+				new PlayerConnectionEvent(
+						this.snapshots.entity(handler.getPlayer()),
+						Instant.now().toEpochMilli()
+				),
+				server
 		));
 	}
 

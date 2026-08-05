@@ -8,6 +8,7 @@ import dev.yawaflua.gominecraftbridge.client.ClientScreenController;
 import dev.yawaflua.gominecraftbridge.client.ClientProtocolInput;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
+import dev.yawaflua.gominecraftbridge.protocol.ActionResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenSpec;
 import dev.yawaflua.gominecraftbridge.protocol.HudElementDto;
 import dev.yawaflua.gominecraftbridge.protocol.HudScene;
@@ -24,7 +25,7 @@ import java.time.Instant;
 
 /** Executes effects returned by a native plugin inside the Minecraft client. */
 public final class ClientPluginResponseHandler {
-	private static final int MAX_SYSTEM_CALL_CHAIN = 32;
+	private static final int MAX_CALLBACK_CHAIN = 32;
 
 	private final Logger logger;
 	private final ClientHudState hud;
@@ -55,7 +56,7 @@ public final class ClientPluginResponseHandler {
 		process(plugin, response, client, 0);
 	}
 
-	private void process(LoadedPlugin plugin, PluginResponse response, Minecraft client, int systemCallDepth) {
+	private void process(LoadedPlugin plugin, PluginResponse response, Minecraft client, int callbackDepth) {
 		for (PluginLog log : response.logs()) {
 			writeLog(plugin, log);
 		}
@@ -71,14 +72,29 @@ public final class ClientPluginResponseHandler {
 		}
 
 		for (ActionRequest action : response.actions()) {
-			executeAction(plugin, action, client);
+			ActionResult result = executeAction(plugin, action, client);
+			if (action.id() == null || action.id().isBlank()) {
+				continue;
+			}
+			if (callbackDepth >= MAX_CALLBACK_CHAIN) {
+				disable(plugin, "client callback chain exceeded " + MAX_CALLBACK_CHAIN, null);
+				return;
+			}
+			try {
+				process(plugin, plugin.invoke(
+						Protocol.Operation.ACTION_RESULT, ClientProtocolInput.scoped(result)
+				), client, callbackDepth + 1);
+			} catch (RuntimeException exception) {
+				disable(plugin, "client action result callback failed", exception);
+				return;
+			}
 		}
 
 		if (response.systemCalls().isEmpty()) {
 			return;
 		}
-		if (systemCallDepth >= MAX_SYSTEM_CALL_CHAIN) {
-			disable(plugin, "client system call chain exceeded " + MAX_SYSTEM_CALL_CHAIN, null);
+		if (callbackDepth >= MAX_CALLBACK_CHAIN) {
+			disable(plugin, "client callback chain exceeded " + MAX_CALLBACK_CHAIN, null);
 			return;
 		}
 		for (var request : response.systemCalls()) {
@@ -89,7 +105,7 @@ public final class ClientPluginResponseHandler {
 			try {
 				process(plugin, plugin.invoke(
 						Protocol.Operation.SYSTEM_CALL_RESULT, ClientProtocolInput.scoped(unavailable)
-				), client, systemCallDepth + 1);
+				), client, callbackDepth + 1);
 			} catch (RuntimeException exception) {
 				disable(plugin, "client system call result callback failed", exception);
 				return;
@@ -123,23 +139,33 @@ public final class ClientPluginResponseHandler {
 		return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
 	}
 
-	private void executeAction(LoadedPlugin plugin, ActionRequest action, Minecraft client) {
+	private ActionResult executeAction(LoadedPlugin plugin, ActionRequest action, Minecraft client) {
+		try {
+			applyAction(plugin, action, client);
+			return new ActionResult(action.id(), action.type(), true, null);
+		} catch (RuntimeException exception) {
+			String error = rootMessage(exception);
+			bridgeLog(plugin, "warn", "Action " + action.type() + " failed: " + error);
+			return new ActionResult(action.id(), action.type(), false, error);
+		}
+	}
+
+	private void applyAction(LoadedPlugin plugin, ActionRequest action, Minecraft client) {
 		if ("minecraft:client.screen.open".equals(action.type())) {
 			try {
 				ClientScreenSpec screen = ProtocolJson.GSON.fromJson(action.payload(), ClientScreenSpec.class);
 				this.screens.open(plugin, screen, client);
 			} catch (RuntimeException exception) {
-				bridgeLog(plugin, "warn", "Rejected malformed client screen: " + rootMessage(exception));
+				throw new IllegalArgumentException("Rejected malformed client screen", exception);
 			}
 			return;
 		}
 		if ("minecraft:client.screen.close".equals(action.type())) {
 			JsonElement id = action.payload() == null ? null : action.payload().get("id");
 			if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
-				bridgeLog(plugin, "warn", "Rejected client screen close without an id");
-			} else {
-				this.screens.close(plugin, id.getAsString(), client, true);
+				throw new IllegalArgumentException("Rejected client screen close without an id");
 			}
+			this.screens.close(plugin, id.getAsString(), client, true);
 			return;
 		}
 		if ("minecraft:client.screen.capture".equals(action.type())) {
@@ -154,7 +180,7 @@ public final class ClientPluginResponseHandler {
 				}
 				this.hud.replace(plugin.metadata().id(), scene);
 			} catch (RuntimeException exception) {
-				bridgeLog(plugin, "warn", "Rejected malformed HUD scene: " + rootMessage(exception));
+				throw new IllegalArgumentException("Rejected malformed HUD scene", exception);
 			}
 			return;
 		}
@@ -167,31 +193,27 @@ public final class ClientPluginResponseHandler {
 				}
 				this.hud.upsert(plugin.metadata().id(), element);
 			} catch (RuntimeException exception) {
-				bridgeLog(plugin, "warn", "Rejected malformed HUD element: " + rootMessage(exception));
+				throw new IllegalArgumentException("Rejected malformed HUD element", exception);
 			}
 			return;
 		}
 		if ("minecraft:client.hud.remove".equals(action.type())) {
 			JsonElement id = action.payload() == null ? null : action.payload().get("id");
 			if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
-				bridgeLog(plugin, "warn", "Rejected HUD removal without an element id");
-			} else {
-				this.hud.remove(plugin.metadata().id(), id.getAsString());
+				throw new IllegalArgumentException("Rejected HUD removal without an element id");
 			}
+			this.hud.remove(plugin.metadata().id(), id.getAsString());
 			return;
 		}
 		if (!"minecraft:client.chat.display".equals(action.type())) {
-			bridgeLog(plugin, "warn", "Rejected action in client runtime: " + action.type());
-			return;
+			throw new IllegalArgumentException("Rejected action in client runtime: " + action.type());
 		}
 		JsonElement message = action.payload() == null ? null : action.payload().get("message");
 		if (message == null || !message.isJsonPrimitive() || !message.getAsJsonPrimitive().isString()) {
-			bridgeLog(plugin, "warn", "Rejected malformed client chat display action");
-			return;
+			throw new IllegalArgumentException("Rejected malformed client chat display action");
 		}
 		if (client.player == null) {
-			bridgeLog(plugin, "warn", "Cannot display client message outside a world");
-			return;
+			throw new IllegalStateException("Cannot display client message outside a world");
 		}
 		client.player.sendSystemMessage(Component.literal(message.getAsString()));
 	}

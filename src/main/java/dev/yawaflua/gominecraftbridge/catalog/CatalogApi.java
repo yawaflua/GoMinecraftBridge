@@ -8,6 +8,8 @@ import java.util.List;
 public interface CatalogApi {
 	List<CatalogProject> search(String query) throws IOException;
 
+	CatalogProject projectBySlug(String slug) throws IOException;
+
 	CatalogVersion version(String projectId, String reference) throws IOException;
 
 	List<CatalogUpdate> checkNewVersions(List<InstalledCatalogPackage> installed) throws IOException;

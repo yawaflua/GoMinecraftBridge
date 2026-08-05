@@ -1,6 +1,7 @@
 plugins {
 	id 'dev.architectury.loom'
 	id 'maven-publish'
+	id 'com.modrinth.minotaur'
 }
 
 version = rootProject.mod_version
@@ -30,6 +31,7 @@ loom {
 	runs {
 		configureEach {
 			vmArg '--enable-native-access=ALL-UNNAMED'
+			vmArg '-Djoml.nounsafe=true'
 		}
 	}
 }
@@ -38,9 +40,6 @@ def sharedRoot = file('../..')
 def prepareMainSources = tasks.register('prepareMainSources', Sync) {
 	from(sharedRoot.toPath().resolve('src/main/java')) {
 		exclude 'dev/yawaflua/gominecraftbridge/compat/MinecraftVersionAdapter.java'
-		exclude 'dev/yawaflua/gominecraftbridge/network/AdminRequestPayload.java'
-		exclude 'dev/yawaflua/gominecraftbridge/network/AdminResponsePayload.java'
-		exclude 'dev/yawaflua/gominecraftbridge/network/BridgeAdminNetworking.java'
 	}
 	from(sharedRoot.toPath().resolve('src/main/generated'))
 	from(file('src/main/java'))
@@ -96,12 +95,34 @@ tasks.named('compileJava') {
 tasks.withType(Test).configureEach {
 	useJUnitPlatform()
 	jvmArgs '--enable-native-access=ALL-UNNAMED'
+	jvmArgs '-Djoml.nounsafe=true'
 }
 
 java {
 	withSourcesJar()
 	sourceCompatibility = JavaVersion.VERSION_21
 	targetCompatibility = JavaVersion.VERSION_21
+}
+
+modrinth {
+	projectId = rootProject.providers.gradleProperty('modrinth_project_id')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_PROJECT_ID'))
+			.getOrElse('')
+	versionNumber = "${project.version}-fabric-1.21.1"
+	versionName = "GBM ${project.version} for Fabric/Quilt 1.21.1-1.21.11"
+	versionType = rootProject.providers.gradleProperty('modrinth_version_type')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_VERSION_TYPE'))
+			.getOrElse('beta')
+	changelog = rootProject.providers.gradleProperty('modrinth_changelog')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_CHANGELOG'))
+			.getOrElse("GBM ${project.version}")
+	uploadFile = tasks.named('remapJar')
+	gameVersions = ['1.21.1', '1.21.11']
+	loaders = ['fabric', 'quilt']
+	detectLoaders = false
+	dependencies {
+		required.project 'fabric-api'
+	}
 }
 
 tasks.named('sourcesJar') {

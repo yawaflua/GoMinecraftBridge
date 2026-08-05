@@ -2,7 +2,7 @@ package sdk
 
 import "encoding/json"
 
-const ABIVersion = 2
+const ABIVersion = 3
 
 const (
 	OperationMetadata            = 1
@@ -20,6 +20,11 @@ const (
 	OperationMobConversion       = 13
 	OperationClientScreenEvent   = 14
 	OperationClientScreenCapture = 15
+	OperationInteraction         = 16
+	OperationActionResult        = 17
+	OperationPlayerJoin          = 18
+	OperationPlayerDisconnect    = 19
+	OperationAllowChat           = 20
 )
 
 // PluginEnvironment declares which Minecraft process may execute a plugin.
@@ -54,7 +59,43 @@ type InitEvent struct {
 	Dedicated          bool              `json:"dedicated"`
 	DataDirectory      string            `json:"dataDirectory"`
 	RuntimeEnvironment PluginEnvironment `json:"runtimeEnvironment"`
+	Capabilities       []Capability      `json:"capabilities,omitempty"`
 }
+
+// Supports reports whether the current host declared a capability during Init.
+func (event InitEvent) Supports(capability Capability) bool {
+	for _, available := range event.Capabilities {
+		if available == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// Capability identifies an optional host event, action, or system call.
+type Capability string
+
+const (
+	CapabilityActionResults         Capability = "gbm:action_results"
+	CapabilityServerTick            Capability = "minecraft:event.server_tick"
+	CapabilityClientTick            Capability = "minecraft:event.client_tick"
+	CapabilityChatEvent             Capability = "minecraft:event.chat"
+	CapabilityAllowChat             Capability = "minecraft:event.chat.allow"
+	CapabilityPlayerJoinEvent       Capability = "minecraft:event.player_join"
+	CapabilityPlayerDisconnectEvent Capability = "minecraft:event.player_disconnect"
+	CapabilityDeathEvent            Capability = "minecraft:event.death"
+	CapabilityInteractionEvent      Capability = "minecraft:event.interaction"
+	CapabilityAllowDamage           Capability = "minecraft:event.damage.allow"
+	CapabilityAfterDamage           Capability = "minecraft:event.damage.after"
+	CapabilityAllowDeath            Capability = "minecraft:event.death.allow"
+	CapabilityMobConversion         Capability = "minecraft:event.mob_conversion"
+	CapabilityChatBroadcast         Capability = "minecraft:chat.broadcast"
+	CapabilityChatPlayer            Capability = "minecraft:chat.player"
+	CapabilityClientChat            Capability = "minecraft:client.chat.display"
+	CapabilityClientHUD             Capability = "minecraft:client.hud"
+	CapabilityClientScreen          Capability = "minecraft:client.screen"
+	CapabilityClientScreenCapture   Capability = "minecraft:client.screen.capture"
+)
 
 // ClientTickEvent contains client-local state. Pointer-like values are empty
 // when the client is at the title screen or is not connected to a world.
@@ -127,6 +168,37 @@ type ChatEvent struct {
 	TimestampUnixMilli int64  `json:"timestampUnixMilli"`
 }
 
+type PlayerConnectionEvent struct {
+	Player             EntitySnapshot `json:"player"`
+	TimestampUnixMilli int64          `json:"timestampUnixMilli"`
+}
+
+// InteractionAction identifies an observed world click.
+type InteractionAction string
+
+const (
+	InteractionUseBlock     InteractionAction = "use_block"
+	InteractionAttackBlock  InteractionAction = "attack_block"
+	InteractionUseEntity    InteractionAction = "use_entity"
+	InteractionAttackEntity InteractionAction = "attack_entity"
+)
+
+// InteractionEvent reports a player click without changing vanilla handling.
+// Block is set for block interactions and Target for entity interactions.
+type InteractionEvent struct {
+	Action             InteractionAction `json:"action"`
+	Hand               string            `json:"hand"`
+	Sneaking           bool              `json:"sneaking"`
+	Player             EntitySnapshot    `json:"player"`
+	Block              *BlockSnapshot    `json:"block,omitempty"`
+	Target             *EntitySnapshot   `json:"target,omitempty"`
+	Face               string            `json:"face,omitempty"`
+	HitX               *float64          `json:"hitX,omitempty"`
+	HitY               *float64          `json:"hitY,omitempty"`
+	HitZ               *float64          `json:"hitZ,omitempty"`
+	TimestampUnixMilli int64             `json:"timestampUnixMilli"`
+}
+
 type DeathEvent struct {
 	Entity             EntitySnapshot `json:"entity"`
 	DamageType         string         `json:"damageType"`
@@ -180,6 +252,33 @@ type SystemCallResult struct {
 	Error   string          `json:"error"`
 }
 
+type ServerInfo struct {
+	Tick             int64  `json:"tick"`
+	Dedicated        bool   `json:"dedicated"`
+	OnlinePlayers    int    `json:"onlinePlayers"`
+	MaxPlayers       int    `json:"maxPlayers,omitempty"`
+	MinecraftVersion string `json:"minecraftVersion,omitempty"`
+	Server           string `json:"server,omitempty"`
+}
+
+type PlayerGetRequest struct {
+	PlayerUUID string `json:"playerUuid"`
+}
+
+type PlayerInfo struct {
+	UUID      string  `json:"uuid"`
+	Name      string  `json:"name"`
+	Dimension string  `json:"dimension"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Z         float64 `json:"z"`
+}
+
+type BlockGetResult struct {
+	Loaded bool   `json:"loaded"`
+	Block  string `json:"block,omitempty"`
+}
+
 // SystemCallType identifies a system call provided by the bridge itself.
 // Use Context.CustomSystemCall for calls registered by another mod.
 type SystemCallType string
@@ -211,8 +310,17 @@ type ConfigUpdateEvent struct {
 }
 
 type ActionRequest struct {
+	ID      string `json:"id,omitempty"`
 	Type    string `json:"type"`
 	Payload any    `json:"payload"`
+}
+
+// ActionResult reports whether the host applied a queued action.
+type ActionResult struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
 }
 
 // ClientScreen describes a client-local Minecraft form. Text is rendered as

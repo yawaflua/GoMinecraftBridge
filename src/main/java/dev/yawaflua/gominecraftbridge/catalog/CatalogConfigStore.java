@@ -17,9 +17,9 @@ final class CatalogConfigStore {
 	private final Path configFile;
 	private State state;
 
-	CatalogConfigStore(Path root) throws IOException {
+	CatalogConfigStore(Path root, String packagesDirectory) throws IOException {
 		this.root = root.toAbsolutePath().normalize();
-		this.packagesRoot = this.root.resolve("client-plugins");
+		this.packagesRoot = this.root.resolve(packagesDirectory);
 		this.configFile = this.root.resolve("repository.json");
 		Files.createDirectories(this.packagesRoot);
 		this.state = load();

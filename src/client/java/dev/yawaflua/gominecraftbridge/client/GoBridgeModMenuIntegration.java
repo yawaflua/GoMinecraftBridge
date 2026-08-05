@@ -14,7 +14,7 @@ public final class GoBridgeModMenuIntegration implements ModMenuApi {
 			if (!FabricLoader.getInstance().isModLoaded("cloth-config")) {
 				return parent;
 			}
-			return ClothManagementScreen.create(parent, true);
+			return ClothManagementScreen.create(parent);
 		};
 	}
 

@@ -155,19 +155,23 @@ public final class BuiltInSystemCalls {
 		return null;
 	}
 
-	private static void kill(Entity entity, ServerLevel lvl){
-		if (entity instanceof LivingEntity le) {
-			MinecraftVersionAdapter.kill(le, lvl);
+	private static void kill(Entity entity, ServerLevel level) {
+		if (!(entity instanceof LivingEntity living)) {
+			throw new IllegalArgumentException("Entity is not living: " + entity.getUUID());
 		}
+		MinecraftVersionAdapter.kill(living, level);
 	}
+
 	private static Entity killEntity(Iterable<ServerLevel> levels, EntityLookup lookup) {
 		for (ServerLevel level : levels) {
 			for (Entity entity : level.getAllEntities()) {
 				if (lookup.uuid() != null && lookup.uuid().equals(entity.getUUID())) {
 					kill(entity, level);
+					return entity;
 				}
 				if (lookup.runtimeId() != null && lookup.runtimeId() == entity.getId()) {
 					kill(entity, level);
+					return entity;
 				}
 			}
 		}

@@ -1,7 +1,7 @@
 package dev.yawaflua.gominecraftbridge.protocol;
 
 public final class Protocol {
-	public static final int ABI_VERSION = 2;
+	public static final int ABI_VERSION = 3;
 	public static final int MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
 	private Protocol() {
@@ -15,7 +15,7 @@ public final class Protocol {
 		DEATH(5),
 		SYSTEM_CALL_RESULT(6),
 		DEINIT(7),
-		/** Client-process tick. Added as an optional ABI v2 operation. */
+		/** Client-process tick. */
 		CLIENT_TICK(8),
 		/** Replaces the configuration exposed through plugin metadata. */
 		CONFIG_UPDATE(9),
@@ -30,7 +30,17 @@ public final class Protocol {
 		/** Reports a client-local form interaction. */
 		CLIENT_SCREEN_EVENT(14),
 		/** Delivers a binary GMBC framebuffer to a client plugin. */
-		CLIENT_SCREEN_CAPTURE(15);
+		CLIENT_SCREEN_CAPTURE(15),
+		/** Reports an observed block or entity interaction. */
+		INTERACTION(16),
+		/** Reports the outcome of an action carrying a request ID. */
+		ACTION_RESULT(17),
+		/** Reports that a player joined the server. */
+		PLAYER_JOIN(18),
+		/** Reports that a player disconnected from the server. */
+		PLAYER_DISCONNECT(19),
+		/** Lets a server plugin allow or deny a player chat message. */
+		ALLOW_CHAT(20);
 
 		private final int code;
 

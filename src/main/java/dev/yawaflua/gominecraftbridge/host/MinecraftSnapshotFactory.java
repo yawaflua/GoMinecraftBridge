@@ -111,6 +111,14 @@ public final class MinecraftSnapshotFactory {
 		);
 	}
 
+	public BlockSnapshot block(net.minecraft.world.level.Level level, BlockPos position) {
+		BlockState state = level.getBlockState(position);
+		return new BlockSnapshot(
+				dimension(level), position.getX(), position.getY(), position.getZ(),
+				BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString(), properties(state)
+		);
+	}
+
 	private static String dimension(net.minecraft.world.level.Level level) {
 		return MinecraftVersionAdapter.dimension(level);
 	}

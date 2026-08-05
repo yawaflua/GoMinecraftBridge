@@ -1,7 +1,6 @@
 package dev.yawaflua.gominecraftbridge.client;
 
 import dev.yawaflua.gominecraftbridge.client.runtime.GbmClientRuntime;
-import dev.yawaflua.gominecraftbridge.client.runtime.ServerConnectionStatus;
 import dev.yawaflua.gominecraftbridge.client.ui.CatalogScreenEdits;
 import dev.yawaflua.gominecraftbridge.client.ui.CatalogScreenSection;
 import dev.yawaflua.gominecraftbridge.client.ui.PackageScreenActions;
@@ -19,19 +18,12 @@ public final class ClothManagementScreen {
 	private ClothManagementScreen() {
 	}
 
-	public static Screen create(Screen parent, boolean refresh) {
+	public static Screen create(Screen parent) {
 		GbmClientRuntime runtime = GoMinecraftBridgeClient.runtime();
-		if (refresh) {
-			runtime.requestRemoteRefresh();
-		}
 
 		BridgeManagementSnapshot local = runtime.localPlugins();
-		BridgeManagementSnapshot remote = runtime.connectionStatus() == ServerConnectionStatus.AVAILABLE
-				? runtime.remoteSnapshot()
-				: null;
 		CatalogScreenEdits catalogEdits = new CatalogScreenEdits(runtime.catalogSettings());
 		PackageScreenActions localActions = new PackageScreenActions();
-		PackageScreenActions remoteActions = new PackageScreenActions();
 
 		ConfigBuilder builder = ConfigBuilder.create()
 				.setParentScreen(parent)
@@ -39,14 +31,13 @@ public final class ClothManagementScreen {
 		ConfigEntryBuilder entries = builder.entryBuilder();
 		CatalogScreenSection.add(builder, entries, runtime, catalogEdits);
 		addLocalPackages(builder, entries, local, localActions);
-		addRemotePackages(builder, entries, runtime, remote, remoteActions);
-		builder.setSavingRunnable(() -> save(runtime, catalogEdits, localActions, remoteActions));
+		builder.setSavingRunnable(() -> save(runtime, catalogEdits, localActions));
 
 		Screen screen = builder.build();
 		runtime.onUpdate(() -> {
 			Minecraft client = Minecraft.getInstance();
 			if (client.screen == screen) {
-				client.setScreen(create(parent, false));
+				client.setScreen(create(parent));
 			}
 		});
 		return screen;
@@ -71,35 +62,10 @@ public final class ClothManagementScreen {
 		}
 	}
 
-	private static void addRemotePackages(
-			ConfigBuilder builder,
-			ConfigEntryBuilder entries,
-			GbmClientRuntime runtime,
-			BridgeManagementSnapshot snapshot,
-			PackageScreenActions actions
-	) {
-		ConfigCategory category = builder.getOrCreateCategory(Component.literal("Server packages"));
-		if (snapshot == null) {
-			PackageScreenSection.addConnectionStatus(category, entries, runtime.connectionStatus());
-			return;
-		}
-		PackageScreenSection.addOverview(
-				category, entries, snapshot, actions, "Server",
-				"config/gbm/plugins or mods (legacy directory is also scanned)"
-		);
-		for (var plugin : snapshot.plugins()) {
-			PackageScreenSection.addPlugin(
-					builder, entries, plugin, snapshot.canReload(), actions,
-					"Server", "Reload unavailable: server operator permission is required."
-			);
-		}
-	}
-
 	private static void save(
 			GbmClientRuntime runtime,
 			CatalogScreenEdits catalog,
-			PackageScreenActions local,
-			PackageScreenActions remote
+			PackageScreenActions local
 	) {
 		runtime.catalog().saveSettings(catalog.backendUrl(), catalog.automaticUpdates());
 		if (catalog.runSearch()) {
@@ -111,12 +77,5 @@ public final class ClothManagementScreen {
 			runtime.rescanLocalPlugins();
 		}
 		local.reloads().forEach(runtime::reloadLocalPlugin);
-		if (remote.rescan()) {
-			runtime.requestRemoteRescan();
-		}
-		remote.reloads().forEach(runtime::requestRemoteReload);
-		if (remote.reloads().isEmpty() && !remote.rescan() && runtime.remoteChannelAvailable()) {
-			runtime.requestRemoteRefresh();
-		}
 	}
 }

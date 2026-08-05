@@ -83,9 +83,12 @@ final class PaperSnapshotFactory {
 		if (world == null || !world.isChunkLoaded(reference.x() >> 4, reference.z() >> 4)) {
 			return null;
 		}
-		Block block = world.getBlockAt(reference.x(), reference.y(), reference.z());
+		return block(world.getBlockAt(reference.x(), reference.y(), reference.z()));
+	}
+
+	BlockSnapshot block(Block block) {
 		return new BlockSnapshot(
-				reference.dimension(), reference.x(), reference.y(), reference.z(),
+				block.getWorld().getKey().toString(), block.getX(), block.getY(), block.getZ(),
 				block.getType().getKey().toString(), blockProperties(block.getBlockData().getAsString())
 		);
 	}

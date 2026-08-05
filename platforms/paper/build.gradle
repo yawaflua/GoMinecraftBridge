@@ -1,6 +1,7 @@
 plugins {
 	id 'java'
 	id 'com.gradleup.shadow'
+	id 'com.modrinth.minotaur'
 }
 
 version = rootProject.mod_version
@@ -22,6 +23,7 @@ def sharedRoot = rootProject.projectDir
 def prepareMainSources = tasks.register('prepareMainSources', Sync) {
 	from(sharedRoot.toPath().resolve('src/main/java')) {
 		include 'dev/yawaflua/gominecraftbridge/backend/**'
+		include 'dev/yawaflua/gominecraftbridge/catalog/**'
 		include 'dev/yawaflua/gominecraftbridge/management/**'
 		include 'dev/yawaflua/gominecraftbridge/protocol/**'
 		include 'dev/yawaflua/gominecraftbridge/host/LoadedPlugin.java'
@@ -111,6 +113,7 @@ processResources {
 tasks.withType(Test).configureEach {
 	useJUnitPlatform()
 	jvmArgs '--enable-native-access=ALL-UNNAMED'
+	jvmArgs '-Djoml.nounsafe=true'
 }
 
 tasks.named('jar') {
@@ -137,6 +140,24 @@ java {
 	withSourcesJar()
 	sourceCompatibility = JavaVersion.VERSION_21
 	targetCompatibility = JavaVersion.VERSION_21
+}
+
+modrinth {
+	projectId = rootProject.providers.gradleProperty('modrinth_project_id')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_PROJECT_ID'))
+			.getOrElse('')
+	versionNumber = "${project.version}-paper"
+	versionName = "GBM ${project.version} for Paper and Purpur"
+	versionType = rootProject.providers.gradleProperty('modrinth_version_type')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_VERSION_TYPE'))
+			.getOrElse('beta')
+	changelog = rootProject.providers.gradleProperty('modrinth_changelog')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_CHANGELOG'))
+			.getOrElse("GBM ${project.version}")
+	uploadFile = tasks.named('shadowJar')
+	gameVersions = ['1.21.1', '1.21.11', '26.1', '26.1.2']
+	loaders = ['paper', 'purpur']
+	detectLoaders = false
 }
 
 tasks.named('sourcesJar') {

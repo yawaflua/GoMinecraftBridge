@@ -5,6 +5,8 @@ import com.google.gson.JsonObject;
 import dev.yawaflua.gominecraftbridge.backend.nativeffi.NativePluginBackend;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ChatEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ActionResult;
+import dev.yawaflua.gominecraftbridge.protocol.BlockSnapshot;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ConfigUpdateEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
@@ -13,6 +15,7 @@ import dev.yawaflua.gominecraftbridge.protocol.Protocol;
 import dev.yawaflua.gominecraftbridge.protocol.PluginEnvironment;
 import dev.yawaflua.gominecraftbridge.protocol.ServerSnapshot;
 import dev.yawaflua.gominecraftbridge.protocol.LevelSnapshot;
+import dev.yawaflua.gominecraftbridge.protocol.InteractionEvent;
 import dev.yawaflua.gominecraftbridge.protocol.EntitySnapshot;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -21,6 +24,7 @@ import java.nio.file.Path;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -58,8 +62,21 @@ final class NativePluginBackendTest {
 		assertEquals("ok", response.status());
 		assertEquals(1, response.actions().size());
 		assertEquals("minecraft:chat.player", response.actions().getFirst().type());
+		assertEquals(true, !response.actions().getFirst().id().isBlank());
 		assertEquals(1, response.systemCalls().size());
 		assertEquals("minecraft:server.info", response.systemCalls().getFirst().name());
+
+		PluginResponse rejectedAction = plugin.invoke(
+				Protocol.Operation.ACTION_RESULT,
+				new ActionResult(
+						response.actions().getFirst().id(),
+						response.actions().getFirst().type(),
+						false,
+						"test rejection"
+				)
+		);
+		assertEquals("ok", rejectedAction.status());
+		assertEquals(true, rejectedAction.logs().getFirst().message().contains("test rejection"));
 
 		PluginResponse tick = plugin.invoke(
 				Protocol.Operation.TICK,
@@ -87,6 +104,21 @@ final class NativePluginBackendTest {
 		);
 		assertEquals("ok", clientTick.status());
 		assertEquals("minecraft:client.chat.display", clientTick.actions().getFirst().type());
+
+		EntitySnapshot interactingPlayer = new EntitySnapshot(
+				7, "00000000-0000-0000-0000-000000000007", "minecraft:player", "Clicker",
+				"minecraft:overworld", 1, 64, 1, 0, 0, 0, 0, 0, true, true, 20F, 20F
+		);
+		PluginResponse interaction = plugin.invoke(
+				Protocol.Operation.INTERACTION,
+				new InteractionEvent(
+						"use_block", "main_hand", true, interactingPlayer,
+						new BlockSnapshot("minecraft:overworld", 1, 64, 2, "minecraft:oak_sign", Map.of("rotation", "0")),
+						null, "north", 1.5, 64.5, 2.5, 1
+				)
+		);
+		assertEquals("ok", interaction.status());
+		assertEquals(true, interaction.logs().getFirst().message().contains("shift-clicked sign minecraft:oak_sign"));
 
 		ByteBuffer capture = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN);
 		capture.put(new byte[]{'G', 'M', 'B', 'C', 1, 1, 0, 0});

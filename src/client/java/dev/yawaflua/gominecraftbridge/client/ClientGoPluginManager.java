@@ -12,10 +12,12 @@ import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
+import dev.yawaflua.gominecraftbridge.protocol.BridgeCapabilities;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ConfigUpdateEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
 import dev.yawaflua.gominecraftbridge.protocol.InitEvent;
+import dev.yawaflua.gominecraftbridge.protocol.InteractionEvent;
 import dev.yawaflua.gominecraftbridge.protocol.PluginEnvironment;
 import dev.yawaflua.gominecraftbridge.protocol.PluginResponse;
 import dev.yawaflua.gominecraftbridge.protocol.Protocol;
@@ -117,6 +119,14 @@ public final class ClientGoPluginManager {
 			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TICK, createTick(client), client);
 		}
 		this.captures.tick(client);
+	}
+
+	public synchronized void interaction(InteractionEvent event, Minecraft client) {
+		for (LoadedPlugin plugin : runningPlugins()) {
+			this.responses.invoke(
+					plugin, Protocol.Operation.INTERACTION, ClientProtocolInput.scoped(event), client
+			);
+		}
 	}
 
 	public synchronized void stop(Minecraft client) {
@@ -238,7 +248,8 @@ public final class ClientGoPluginManager {
 							MinecraftVersionAdapter.gameVersion(),
 							false,
 							pluginData.toAbsolutePath().toString(),
-							PluginEnvironment.CLIENT
+							PluginEnvironment.CLIENT,
+							BridgeCapabilities.client()
 					)
 			);
 			this.responses.process(plugin, response, Minecraft.getInstance());

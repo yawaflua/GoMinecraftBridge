@@ -6,8 +6,8 @@ description: Native Go plugin host for Paper and Purpur servers
 author: yawaflua
 commands:
   gbm:
-    description: Inspect and manage native Go plugins
-    usage: /gbm <status|packages|metadata|logs|reload|rescan>
+    description: Inspect, install, and manage native Go plugins
+    usage: /gbm <status|packages|metadata|logs|subscribe|unsubscribe|reload|rescan|load>
     aliases: [gmb, go-minecraft-bridge, gobridge]
 permissions:
   gbm.admin:

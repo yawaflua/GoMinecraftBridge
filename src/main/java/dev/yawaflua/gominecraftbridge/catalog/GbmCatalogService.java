@@ -1,5 +1,7 @@
 package dev.yawaflua.gominecraftbridge.catalog;
 
+import dev.yawaflua.gominecraftbridge.protocol.Protocol;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -11,12 +13,18 @@ public final class GbmCatalogService {
 	public static final String DEFAULT_BACKEND_URL = "http://localhost:8080";
 	public static final String SIDECAR_FILE = PackageManifestStore.FILE_NAME;
 
+	private final InstallationTarget target;
 	private final CatalogConfigStore config;
 	private final PackageManifestStore manifests;
 	private final PackageIntegrityVerifier integrity = new PackageIntegrityVerifier();
 
 	public GbmCatalogService(Path root) throws IOException {
-		this.config = new CatalogConfigStore(root);
+		this(root, InstallationTarget.CLIENT);
+	}
+
+	public GbmCatalogService(Path root, InstallationTarget target) throws IOException {
+		this.target = target == null ? InstallationTarget.CLIENT : target;
+		this.config = new CatalogConfigStore(root, this.target.packagesDirectory);
 		this.manifests = new PackageManifestStore(this.config.packagesRoot());
 	}
 
@@ -36,6 +44,14 @@ public final class GbmCatalogService {
 		return api().search(query);
 	}
 
+	public InstallCandidate findBySlug(String slug) throws IOException {
+		CatalogApi backend = api();
+		CatalogProject project = backend.projectBySlug(slug);
+		CatalogVersion version = backend.version(project.id(), "latest");
+		requireCompatible(version);
+		return new InstallCandidate(project, version);
+	}
+
 	public InstalledCatalogPackage install(CatalogProject project) throws IOException {
 		if (project == null || project.id().isBlank() || project.slug().isBlank()) {
 			throw new IllegalArgumentException("A catalog project is required");
@@ -43,6 +59,18 @@ public final class GbmCatalogService {
 		CatalogApi backend = api();
 		CatalogVersion version = backend.version(project.id(), "latest");
 		return install(project.id(), project.slug(), version, packageByProject(project.id()), backend);
+	}
+
+	public InstalledCatalogPackage install(InstallCandidate candidate) throws IOException {
+		if (candidate == null) {
+			throw new IllegalArgumentException("An install candidate is required");
+		}
+		CatalogProject project = candidate.project();
+		CatalogVersion version = candidate.version();
+		if (!version.projectId().isBlank() && !version.projectId().equals(project.id())) {
+			throw new IOException("Catalog version does not belong to project " + project.slug());
+		}
+		return install(project.id(), project.slug(), version, packageByProject(project.id()), api());
 	}
 
 	public List<CatalogUpdate> checkForUpdates() throws IOException {
@@ -86,6 +114,17 @@ public final class GbmCatalogService {
 		return this.config.packageByPlugin(pluginId);
 	}
 
+	public Path installedBinary(InstalledCatalogPackage installed) throws IOException {
+		if (installed == null || installed.binaryPath().isBlank()) {
+			throw new IOException("Installed package does not contain a binary path");
+		}
+		Path binary = this.config.root().resolve(installed.binaryPath()).toAbsolutePath().normalize();
+		if (!binary.startsWith(this.config.packagesRoot().toAbsolutePath().normalize())) {
+			throw new IOException("Installed package binary escapes the package directory");
+		}
+		return binary;
+	}
+
 	public void associatePlugin(Path binary, String pluginId) throws IOException {
 		InstalledCatalogPackage associated = this.config.associatePlugin(binary, pluginId);
 		if (associated != null) {
@@ -104,9 +143,7 @@ public final class GbmCatalogService {
 			InstalledCatalogPackage current,
 			CatalogApi backend
 	) throws IOException {
-		if (!version.metadata().supportsClient()) {
-			throw new IOException("Version " + version.version() + " is server-only and cannot be installed in the client runtime");
-		}
+		requireCompatible(version);
 		CatalogApi.Download download = backend.download(slug, version.version());
 		String sha256 = this.integrity.verify(version, download.data());
 		Path binary = PackageInstaller.install(
@@ -135,11 +172,45 @@ public final class GbmCatalogService {
 		return new BackendCatalogClient(settings().backendUrl());
 	}
 
+	private void requireCompatible(CatalogVersion version) throws IOException {
+		if (!version.metadata().supportsProtocol(Protocol.ABI_VERSION)) {
+			throw new IOException("Version " + version.version() + " requires ABI/API "
+					+ version.metadata().abiVersion() + "/" + version.metadata().apiVersion()
+					+ ", but this runtime requires " + Protocol.ABI_VERSION);
+		}
+		boolean supported = this.target == InstallationTarget.CLIENT
+				? version.metadata().supportsClient()
+				: version.metadata().supportsServer();
+		if (!supported) {
+			throw new IOException("Version " + version.version() + " does not support the "
+					+ this.target.name().toLowerCase() + " runtime");
+		}
+	}
+
 	private static String rootMessage(Throwable throwable) {
 		Throwable current = throwable;
 		while (current.getCause() != null) {
 			current = current.getCause();
 		}
 		return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
+	}
+
+	public enum InstallationTarget {
+		CLIENT("client-plugins"),
+		SERVER("plugins");
+
+		private final String packagesDirectory;
+
+		InstallationTarget(String packagesDirectory) {
+			this.packagesDirectory = packagesDirectory;
+		}
+	}
+
+	public record InstallCandidate(CatalogProject project, CatalogVersion version) {
+		public InstallCandidate {
+			if (project == null || version == null) {
+				throw new IllegalArgumentException("Project and version are required");
+			}
+		}
 	}
 }

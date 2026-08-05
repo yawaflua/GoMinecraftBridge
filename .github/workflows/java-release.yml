@@ -67,12 +67,12 @@ jobs:
         run: |
           version="${{ steps.release.outputs.version }}"
           mkdir -p release
-          cp "versions/1.21.1/build/libs/go-minecraft-bridge-1.21.1-${version}.jar" release/
-          cp "versions/1.21.1/build/libs/go-minecraft-bridge-1.21.1-${version}-sources.jar" release/
-          cp "versions/26.1.2/build/libs/go-minecraft-bridge-26.1.2-${version}.jar" release/
-          cp "versions/26.1.2/build/libs/go-minecraft-bridge-26.1.2-${version}-sources.jar" release/
-          cp "platforms/paper/build/libs/go-minecraft-bridge-paper-${version}.jar" release/
-          cp "platforms/paper/build/libs/go-minecraft-bridge-paper-${version}-sources.jar" release/
+          cp "versions/1.21.1/build/libs/gbm-1.21.1-${version}.jar" release/
+          cp "versions/1.21.1/build/libs/gbm-1.21.1-${version}-sources.jar" release/
+          cp "versions/26.1.2/build/libs/gbm-26.1.2-${version}.jar" release/
+          cp "versions/26.1.2/build/libs/gbm-26.1.2-${version}-sources.jar" release/
+          cp "platforms/paper/build/libs/gbm-paper-${version}.jar" release/
+          cp "platforms/paper/build/libs/gbm-paper-${version}-sources.jar" release/
           find release -maxdepth 1 -type f -name '*.jar' -print -exec sha256sum {} \;
 
       - name: Create or update GitHub Release
@@ -89,3 +89,19 @@ jobs:
               --generate-notes \
               --title "Go Minecraft Bridge $TAG"
           fi
+
+      - name: Publish to Modrinth
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODRINTH_PROJECT_ID: ${{ vars.MODRINTH_PROJECT_ID }}
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "$MODRINTH_PROJECT_ID" || -z "$MODRINTH_TOKEN" ]]; then
+            echo "Skipping Modrinth publish: configure MODRINTH_PROJECT_ID and MODRINTH_TOKEN." >&2
+            exit 0
+          fi
+          changelog="$(gh release view "$GITHUB_REF_NAME" --json body --jq .body)"
+          MODRINTH_CHANGELOG="$changelog" ./gradlew publishModrinth \
+            -Pmod_version="${{ steps.release.outputs.version }}" \
+            --console=plain

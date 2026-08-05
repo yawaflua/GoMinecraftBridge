@@ -24,8 +24,7 @@
   let environment: PluginEnvironment = 'PLUGIN_ENVIRONMENT_BOTH'
   let modSlug = ''
   let metadataDescription = ''
-  let abiVersion = ''
-  let apiVersion = ''
+  const protocolVersion = '3'
   let licenses = ''
   let authors = $session?.user.username ?? ''
   let archive: File | null = null
@@ -75,8 +74,8 @@
           description: metadataDescription.trim() || description.trim(),
           licenses: licenses.split(',').map((value) => value.trim()).filter(Boolean),
           authors: authors.split(',').map((value) => value.trim()).filter(Boolean),
-          abi_version: abiVersion.trim(),
-          api_version: apiVersion.trim(),
+          abi_version: protocolVersion,
+          api_version: protocolVersion,
           environment,
         },
         archive: { content_type: archive.type || 'application/zip', data },
@@ -126,8 +125,8 @@
             <label class="field"><span>{$t('Slug пакета')}</span><input bind:value={modSlug} required placeholder="world-sync"/></label>
           </div>
           <div class="field-row">
-            <label class="field"><span>{$t('Версия Bridge ABI')}</span><input bind:value={abiVersion} required placeholder="1"/></label>
-            <label class="field"><span>{$t('Версия API')}</span><input bind:value={apiVersion} required placeholder="v1"/></label>
+            <label class="field"><span>{$t('Версия Bridge ABI')}</span><input value={protocolVersion} readonly/></label>
+            <label class="field"><span>{$t('Версия API')}</span><input value={protocolVersion} readonly/></label>
           </div>
           <label class="field"><span>{$t('Авторы')}</span><input bind:value={authors} required placeholder="alex_dev, maria"/><small>{$t('Несколько значений разделяйте запятыми')}</small></label>
           <label class="field"><span>{$t('Лицензии')}</span><input bind:value={licenses} required placeholder="MIT"/><small>{$t('Например: MIT, Apache-2.0')}</small></label>

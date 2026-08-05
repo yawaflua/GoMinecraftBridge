@@ -9,27 +9,23 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 final class LoadedPluginMetadataTest {
 	@Test
-	void defaultsLegacyMetadataToServer() {
-		LoadedPlugin plugin = new LoadedPlugin(new MetadataBackend(""));
-
-		assertEquals(PluginEnvironment.SERVER, plugin.metadata().environment());
-		assertNull(plugin.metadata().license());
+	void rejectsMetadataWithoutEnvironment() {
+		assertThrows(IllegalArgumentException.class, () -> new LoadedPlugin(new MetadataBackend("")));
 	}
 
 	@Test
 	void readsLicenseAndLegacyLicenceSpelling() {
 		assertEquals(
 				"MIT",
-				new LoadedPlugin(new MetadataBackend(",\"license\":\"MIT\"")).metadata().license()
+				new LoadedPlugin(new MetadataBackend(",\"environment\":\"server\",\"license\":\"MIT\"")).metadata().license()
 		);
 		assertEquals(
 				"Apache-2.0",
-				new LoadedPlugin(new MetadataBackend(",\"licence\":\"Apache-2.0\"")).metadata().license()
+				new LoadedPlugin(new MetadataBackend(",\"environment\":\"server\",\"licence\":\"Apache-2.0\"")).metadata().license()
 		);
 	}
 
@@ -66,7 +62,8 @@ final class LoadedPluginMetadataTest {
 		@Override
 		public byte[] call(Protocol.Operation operation, byte[] input) {
 			String json = "{\"status\":\"ok\",\"data\":{"
-					+ "\"id\":\"test_plugin\",\"name\":\"Test\",\"version\":\"1.0.0\",\"apiVersion\":2"
+					+ "\"id\":\"test_plugin\",\"name\":\"Test\",\"version\":\"1.0.0\",\"apiVersion\":"
+					+ Protocol.ABI_VERSION
 					+ environmentField + "}}";
 			return json.getBytes(StandardCharsets.UTF_8);
 		}

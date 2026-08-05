@@ -3,15 +3,37 @@ plugins {
 	id 'dev.architectury.loom' version "${architectury_loom_version}" apply false
 	id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
 	id 'com.gradleup.shadow' version '9.6.0' apply false
+	id 'com.modrinth.minotaur' version '2.9.0' apply false
 }
 
 group = project.maven_group
 version = project.mod_version
 
+def modrinthProjectId = providers.gradleProperty('modrinth_project_id')
+		.orElse(providers.environmentVariable('MODRINTH_PROJECT_ID'))
+def verifyModrinthConfiguration = tasks.register('verifyModrinthConfiguration') {
+	group = 'publishing'
+	description = 'Validates credentials required for publishing to Modrinth.'
+	doLast {
+		if (!modrinthProjectId.isPresent() || modrinthProjectId.get().isBlank()) {
+			throw new GradleException('Set modrinth_project_id or MODRINTH_PROJECT_ID before publishing to Modrinth.')
+		}
+		String token = providers.environmentVariable('MODRINTH_TOKEN').getOrElse('')
+		if (token.isBlank()) {
+			throw new GradleException('Set MODRINTH_TOKEN before publishing to Modrinth.')
+		}
+	}
+}
+
 subprojects {
 	plugins.withId('java') {
 		tasks.named('processResources') {
 			from(rootProject.file('icon.png'))
+		}
+	}
+	plugins.withId('com.modrinth.minotaur') {
+		tasks.named('modrinth') {
+			dependsOn verifyModrinthConfiguration
 		}
 	}
 }
@@ -30,4 +52,10 @@ tasks.register('testAll') {
 	group = 'verification'
 	description = 'Runs tests for every supported Minecraft target.'
 	dependsOn ':mc1211:test', ':mc2612:test', ':paper:test'
+}
+
+tasks.register('publishModrinth') {
+	group = 'publishing'
+	description = 'Publishes every supported Minecraft target to Modrinth.'
+	dependsOn ':mc1211:modrinth', ':mc2612:modrinth', ':paper:modrinth'
 }

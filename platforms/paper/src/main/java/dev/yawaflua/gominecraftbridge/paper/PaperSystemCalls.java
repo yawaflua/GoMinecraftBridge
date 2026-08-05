@@ -110,7 +110,7 @@ final class PaperSystemCalls {
 					break;
 				}
 				if (selected != null) {
-					break;
+					throw new IllegalArgumentException("Entity is not living: " + uuid);
 				}
 			}
 		} else {

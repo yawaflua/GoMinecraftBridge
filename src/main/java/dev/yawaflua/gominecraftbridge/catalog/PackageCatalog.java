@@ -1,6 +1,7 @@
 package dev.yawaflua.gominecraftbridge.catalog;
 
 import com.google.gson.JsonParseException;
+import dev.yawaflua.gominecraftbridge.protocol.Protocol;
 import dev.yawaflua.gominecraftbridge.protocol.ProtocolJson;
 
 import java.io.IOException;
@@ -160,6 +161,10 @@ public final class PackageCatalog {
 			InstalledCatalogPackage current,
 			BackendCatalogClient backend
 	) throws IOException {
+		if (!version.metadata().supportsProtocol(Protocol.ABI_VERSION)) {
+			throw new IOException("Version " + version.version() + " is not compatible with ABI/API "
+					+ Protocol.ABI_VERSION);
+		}
 		if (!version.metadata().supportsClient()) {
 			throw new IOException("Version " + version.version() + " is server-only and cannot be installed in the client runtime");
 		}

@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /** Builds a Cloth Config screen from a Go struct or a JSON Schema object. */
 final class NativePluginConfigScreen {
@@ -100,13 +101,20 @@ final class NativePluginConfigScreen {
 
 			JsonElement initial = schema.has("default") ? schema.get("default").deepCopy() : defaultValue(schema);
 			edited.add(field.getKey(), initial.deepCopy());
-			if ("string".equals(type) && schema.has("enum") && schema.get("enum").isJsonArray()) {
-				List<String> choices = strings(schema.getAsJsonArray("enum"));
+			if (schema.has("enum") && schema.get("enum").isJsonArray()) {
+				List<JsonPrimitive> choices = primitives(schema.getAsJsonArray("enum"));
 				if (!choices.isEmpty()) {
-					String current = initial.isJsonPrimitive() ? initial.getAsString() : choices.getFirst();
+					JsonPrimitive current = initial.isJsonPrimitive()
+							&& choices.contains(initial.getAsJsonPrimitive())
+							? initial.getAsJsonPrimitive()
+							: choices.getFirst();
 					category.addEntry(entries.startSelector(
-							Component.literal(title), choices.toArray(String[]::new), current
-					).setDefaultValue(current).setSaveConsumer(value -> edited.addProperty(field.getKey(), value)).build());
+							Component.literal(title), choices.toArray(JsonPrimitive[]::new), current
+					).setNameProvider(value -> Component.literal(value.getAsString()))
+							.setDefaultValue(current)
+							.setTooltipSupplier(value -> fullStringTooltip(value.getAsString()))
+							.setSaveConsumer(value -> edited.add(field.getKey(), value.deepCopy()))
+							.build());
 					count++;
 					continue;
 				}
@@ -157,6 +165,7 @@ final class NativePluginConfigScreen {
 				String current = primitive.getAsString();
 				category.addEntry(entries.startStrField(name, current)
 						.setDefaultValue(current)
+						.setTooltipSupplier(NativePluginConfigScreen::fullStringTooltip)
 						.setSaveConsumer(updated -> save.accept(new JsonPrimitive(updated)))
 						.build());
 				return 1;
@@ -248,6 +257,23 @@ final class NativePluginConfigScreen {
 			}
 		}
 		return values;
+	}
+
+	private static List<JsonPrimitive> primitives(JsonArray array) {
+		List<JsonPrimitive> values = new ArrayList<>();
+		for (JsonElement element : array) {
+			if (element.isJsonPrimitive()) {
+				values.add(element.getAsJsonPrimitive());
+			}
+		}
+		return values;
+	}
+
+	private static Optional<Component[]> fullStringTooltip(String value) {
+		if (value == null || value.length() <= 32) {
+			return Optional.empty();
+		}
+		return Optional.of(new Component[]{Component.literal(value)});
 	}
 
 	private static JsonArray array(List<?> values) {

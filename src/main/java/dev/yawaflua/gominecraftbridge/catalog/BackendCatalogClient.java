@@ -71,13 +71,19 @@ public final class BackendCatalogClient implements CatalogApi {
 			if (result == null || result.project == null) {
 				continue;
 			}
-			ProjectDto project = result.project;
-			projects.add(new CatalogProject(
-					project.id, project.slug, project.name, project.description,
-					project.latestVersion, result.similarity
-			));
+			projects.add(result.project.toCatalogProject(result.similarity));
 		}
 		return List.copyOf(projects);
+	}
+
+	@Override
+	public CatalogProject projectBySlug(String slug) throws IOException {
+		requireIdentifier(slug, "project slug");
+		ProjectDto project = getJson("/v1/projects/slug/" + encode(slug), ProjectDto.class);
+		if (project == null || project.id == null || project.id.isBlank()) {
+			throw new IOException("Backend returned an empty project for slug " + slug);
+		}
+		return project.toCatalogProject(1);
 	}
 
 	public List<CatalogVersion> versions(String projectId) throws IOException {
@@ -276,6 +282,10 @@ public final class BackendCatalogClient implements CatalogApi {
 		String description;
 		@SerializedName(value = "latest_version", alternate = "latestVersion")
 		String latestVersion;
+
+		CatalogProject toCatalogProject(float similarity) {
+			return new CatalogProject(id, slug, name, description, latestVersion, similarity);
+		}
 	}
 
 	private static final class VersionsResponse {

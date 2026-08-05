@@ -1,21 +1,28 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/yawaflua/GoMinecraftBridge/sdk"
+	"github.com/yawaflua/GoMinecraftBridge/sdk/client"
+	"github.com/yawaflua/GoMinecraftBridge/sdk/dual"
+	"github.com/yawaflua/GoMinecraftBridge/sdk/server"
 )
 
-type helloPlugin struct {
+type serverPlugin struct {
+	capabilities []sdk.Capability
+}
+
+type clientPlugin struct {
 	hudDemoTick       int64
 	hudVisible        bool
 	customScreenShown bool
 }
 
-func (plugin helloPlugin) AfterDamage(context *sdk.Context, event sdk.AfterDamageEvent) error {
-	if !event.Entity.Player && event.Entity.Alive { //&& rand.Int() == 67
+func (plugin serverPlugin) AfterDamage(context *server.Context, event sdk.AfterDamageEvent) error {
+	if !event.Entity.Player && event.Entity.Alive && event.AttackerUUID != nil {
 		context.Kill(event.Entity.UUID)
 		context.SendMessage(*event.AttackerUUID, "CRIT!")
 	}
@@ -36,7 +43,7 @@ var config = &helloConfig{
 	FavoriteTags: []string{"native", "go"},
 }
 
-func (helloPlugin) Metadata() sdk.Metadata {
+func metadata() sdk.Metadata {
 	return sdk.Metadata{
 		ID:           "hello_native",
 		Name:         "Hello Native",
@@ -44,34 +51,49 @@ func (helloPlugin) Metadata() sdk.Metadata {
 		Description:  "Native Go plugin example for GBM",
 		Authors:      []string{"yawaflua"},
 		License:      "MIT",
-		Environment:  sdk.PluginEnvironmentBoth,
 		ConfigSchema: config,
 	}
 }
 
-func (helloPlugin) ConfigUpdated(_ *sdk.Context, _ sdk.ConfigUpdateEvent) error {
+func configUpdated() error {
 	fmt.Printf("configuration updated: enabled=%t greeting=%q\n", config.Enabled, config.Greeting)
 	return nil
 }
 
-func (helloPlugin) Init(context *sdk.Context, event sdk.InitEvent) error {
-	fmt.Printf("initialized for Minecraft %s; data=%s\n", event.MinecraftVersion, event.DataDirectory)
-	if event.RuntimeEnvironment == sdk.PluginEnvironmentServer {
-		context.SubscribeSnapshot(true, sdk.BlockReference{
-			Dimension: "minecraft:overworld",
-			X:         0,
-			Y:         64,
-			Z:         0,
-		})
-		// When you subscribe to a snapshot, you will receive a snapshot event every tick.
-		//In that snapshot event, you can access the current state of the world, block that you are subscribed to
-	}
+func (serverPlugin) ConfigUpdated(_ *server.Context, _ sdk.ConfigUpdateEvent) error {
+	return configUpdated()
+}
+
+func (clientPlugin) ConfigUpdated(_ *client.Context, _ sdk.ConfigUpdateEvent) error {
+	return configUpdated()
+}
+
+func (plugin *serverPlugin) Init(context *server.Context, event sdk.InitEvent) error {
+	plugin.capabilities = append([]sdk.Capability(nil), event.Capabilities...)
+	fmt.Printf(
+		"initialized for Minecraft %s; data=%s; capabilities=%v\n",
+		event.MinecraftVersion, event.DataDirectory, event.Capabilities,
+	)
+	context.SubscribeSnapshot(true, sdk.BlockReference{
+		Dimension: "minecraft:overworld",
+		X:         0,
+		Y:         64,
+		Z:         0,
+	})
 	return nil
 }
 
-func (plugin *helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTickEvent) error {
+func (clientPlugin) Init(_ *client.Context, event sdk.InitEvent) error {
+	fmt.Printf(
+		"initialized client for Minecraft %s; data=%s; capabilities=%v\n",
+		event.MinecraftVersion, event.DataDirectory, event.Capabilities,
+	)
+	return nil
+}
+
+func (plugin *clientPlugin) Tick(context *client.Context, event sdk.ClientTickEvent) error {
 	if config.Enabled && event.Connected && config.RepeatTicks > 0 && event.Tick%int64(config.RepeatTicks) == 0 {
-		context.DisplayClientMessage(config.Greeting)
+		context.DisplayMessage(config.Greeting)
 	}
 
 	if !config.Enabled || !event.Connected {
@@ -88,7 +110,7 @@ func (plugin *helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTick
 	switch plugin.hudDemoTick {
 	case 1:
 		if !plugin.customScreenShown {
-			context.OpenClientScreen(exampleCustomScreen())
+			context.OpenScreen(exampleCustomScreen())
 			plugin.customScreenShown = true
 		}
 
@@ -134,14 +156,14 @@ func (plugin *helloPlugin) ClientTick(context *sdk.Context, event sdk.ClientTick
 	return nil
 }
 
-func (helloPlugin) ClientScreenEvent(context *sdk.Context, event sdk.ClientScreenEvent) error {
+func (clientPlugin) ScreenEvent(context *client.Context, event sdk.ClientScreenEvent) error {
 	if event.ScreenID != "hello-custom" || event.Type != "button" {
 		return nil
 	}
 
 	alias := event.Values["alias"]
 	theme := event.Values["theme"]
-	context.DisplayClientMessage(fmt.Sprintf(
+	context.DisplayMessage(fmt.Sprintf(
 		"Custom screen action %q: alias=%q theme=%q",
 		event.ButtonID, alias, theme,
 	))
@@ -205,7 +227,7 @@ func exampleCustomScreen() sdk.ClientScreen {
 	}
 }
 
-func (helloPlugin) ClientScreenCaptured(context *sdk.Context, capture sdk.ClientScreenCapture) error {
+func (clientPlugin) ScreenCaptured(context *client.Context, capture sdk.ClientScreenCapture) error {
 	context.Log("info", fmt.Sprintf(
 		"captured screen: %dx%d stride=%d bytes=%d",
 		capture.Width, capture.Height, capture.Stride, len(capture.Pixels),
@@ -213,55 +235,110 @@ func (helloPlugin) ClientScreenCaptured(context *sdk.Context, capture sdk.Client
 	return nil
 }
 
-func (helloPlugin) Tick(context *sdk.Context, snapshot sdk.ServerSnapshot) error {
+func (serverPlugin) Tick(context *server.Context, snapshot sdk.ServerSnapshot) error {
 	if snapshot.Tick%200 == 0 {
 		fmt.Printf("tick=%d entities=%d watched_blocks=%d\n", snapshot.Tick, len(snapshot.Entities), len(snapshot.Blocks))
 		if len(snapshot.Entities) > 0 {
 			runtimeID := snapshot.Entities[0].RuntimeID
-			context.SystemCall(sdk.SystemCallGetEntity, sdk.GetEntityRequest{RuntimeID: &runtimeID})
+			context.GetEntity(sdk.GetEntityRequest{RuntimeID: &runtimeID})
 
 		}
 	}
 	return nil
 }
 
-func (helloPlugin) Chat(context *sdk.Context, event sdk.ChatEvent) error {
+func (plugin *serverPlugin) Chat(context *server.Context, event sdk.ChatEvent) error {
+	if event.Message == "!go capabilities" {
+		context.SendMessage(event.PlayerUUID, fmt.Sprintf("GBM capabilities: %v", plugin.capabilities))
+		return nil
+	}
 	if event.Message != "!go" {
 		return nil
 	}
 
 	context.SendMessage(event.PlayerUUID, config.Greeting)
-	context.SystemCall(sdk.SystemCallServerInfo, map[string]any{})
+	context.GetServerInfo()
 	return nil
 }
 
-func (helloPlugin) Death(context *sdk.Context, event sdk.DeathEvent) error {
+type logContext interface {
+	Log(level, message string)
+}
+
+func handleInteraction(context logContext, event sdk.InteractionEvent) error {
+	if !event.Sneaking {
+		return nil
+	}
+	if event.Block != nil && strings.Contains(event.Block.Block, "sign") {
+		context.Log("info", fmt.Sprintf(
+			"shift-clicked sign %s at %s %d %d %d; properties=%v",
+			event.Block.Block, event.Block.Dimension,
+			event.Block.X, event.Block.Y, event.Block.Z, event.Block.Properties,
+		))
+	}
+	if event.Target != nil && event.Target.Player {
+		context.Log("info", fmt.Sprintf(
+			"shift-clicked player %s (%s) with %s",
+			event.Target.Name, event.Target.UUID, event.Hand,
+		))
+	}
+	return nil
+}
+
+func (serverPlugin) Interaction(context *server.Context, event sdk.InteractionEvent) error {
+	return handleInteraction(context, event)
+}
+
+func (clientPlugin) Interaction(context *client.Context, event sdk.InteractionEvent) error {
+	return handleInteraction(context, event)
+}
+
+func (serverPlugin) Death(context *server.Context, event sdk.DeathEvent) error {
 	context.Broadcast(fmt.Sprintf("[Go] %s died (%s)", event.Entity.Name, event.DamageType))
 	return nil
 }
 
-func (helloPlugin) SystemCallResult(context *sdk.Context, result sdk.SystemCallResult) error {
-	if !result.Success {
-		return fmt.Errorf("system call %s failed: %s", result.Name, result.Error)
-	}
-
-	var value any
-	if err := json.Unmarshal(result.Data, &value); err != nil {
+func (serverPlugin) SystemCallResult(context *server.Context, result sdk.SystemCallResult) error {
+	value, err := sdk.DecodeSystemCallResult[any](result)
+	if err != nil {
 		return err
 	}
 	fmt.Printf("system call %s result: %v\n", result.Name, value)
 	return nil
 }
 
-func (helloPlugin) Deinit(context *sdk.Context, event sdk.DeinitEvent) error {
+func handleActionResult(context logContext, result sdk.ActionResult) error {
+	if !result.Success {
+		context.Log("warn", fmt.Sprintf("action %s (%s) failed: %s", result.ID, result.Type, result.Error))
+	}
+	return nil
+}
+
+func (serverPlugin) ActionResult(context *server.Context, result sdk.ActionResult) error {
+	return handleActionResult(context, result)
+}
+
+func (clientPlugin) ActionResult(context *client.Context, result sdk.ActionResult) error {
+	return handleActionResult(context, result)
+}
+
+func deinit(event sdk.DeinitEvent) error {
 	// Intentionally omit the newline: the SDK flush barrier still assigns this
 	// partial stdout line to the deinit response.
 	fmt.Printf("deinit: %s", event.Reason)
 	return nil
 }
 
+func (serverPlugin) Deinit(_ *server.Context, event sdk.DeinitEvent) error {
+	return deinit(event)
+}
+
+func (clientPlugin) Deinit(_ *client.Context, event sdk.DeinitEvent) error {
+	return deinit(event)
+}
+
 func init() {
-	sdk.Register(&helloPlugin{})
+	dual.Register(metadata(), &serverPlugin{}, &clientPlugin{})
 }
 
 func main() {}

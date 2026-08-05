@@ -21,13 +21,16 @@ The current MVP also targets:
 
 - Go 1.24 or newer;
 - native Go plugins built with `-buildmode=c-shared`;
-- initialization, server/client tick, chat, living-entity damage/death/conversion,
+- initialization, server/client tick, cancellable chat, player join/disconnect,
+  block/entity interactions,
+  living-entity damage/death/conversion,
   system-call-result, and deinitialization callbacks;
 - entity snapshots and explicit subscriptions to block positions;
 - chat broadcast/direct-message actions;
+- per-runtime capability negotiation and action-result acknowledgements;
 - extensible namespaced system calls;
 - capture of Go `stdout`, `stderr`, and the standard `log` package;
-- FlatBuffers tick snapshots and bounded binary framebuffer captures (ABI v2),
+- FlatBuffers tick snapshots and bounded binary framebuffer captures (ABI v3),
   while ordinary control-plane messages remain JSON;
 - a Cloth Config management screen exposed through Mod Menu.
 
@@ -67,6 +70,26 @@ platforms/paper/build/libs/gbm-paper-<version>.jar
 Run a development client for one target with `./gradlew :mc1211:runClient` or
 `./gradlew :mc2612:runClient`.
 
+## Publish to Modrinth
+
+Create the Modrinth project first, then either set its ID/slug in
+`gradle.properties` as `modrinth_project_id` or export
+`MODRINTH_PROJECT_ID`. Keep the personal access token out of Gradle properties:
+
+```bash
+export MODRINTH_TOKEN='<token with CREATE_VERSION scope>'
+./gradlew publishModrinth
+```
+
+The task publishes separate versions for Fabric/Quilt 1.21.1 and 1.21.11,
+Fabric/Quilt 26.1.2, and the shared Paper/Purpur JAR so that Modrinth assigns the
+correct loaders and game versions to every artifact. Versions are marked as
+beta by default; override that with `MODRINTH_VERSION_TYPE=release` (or `alpha`)
+and set `MODRINTH_CHANGELOG` when needed.
+The `mc/vX.Y.Z` GitHub release workflow also publishes automatically after its
+GitHub Release is created when the repository variable `MODRINTH_PROJECT_ID`
+and secret `MODRINTH_TOKEN` are configured.
+
 ## Paper and Purpur installation
 
 Copy the shaded Paper JAR to the server's `plugins` directory, start the server
@@ -78,9 +101,15 @@ plugins/GBM/plugins/libmy_plugin.so
 
 Use `.dll` on Windows and `.dylib` on macOS. Plugin data is stored separately in
 `plugins/GBM/data/<plugin-id>`. Paper/Purpur invokes the same ABI
-operations as Fabric: metadata, init, server tick, chat, death, system-call
-result, and deinit. Snapshots, chat actions, and all built-in system calls use
-the public Bukkit/Paper API rather than Minecraft internals.
+operations as Fabric: metadata, init, server tick, chat, player join/disconnect,
+interaction, death, system-call result, and deinit. Snapshots, chat actions, and
+all built-in system calls use the public Bukkit/Paper API rather than Minecraft
+internals.
+
+Paper/Purpur dispatches `AfterDamageHandler` from the final uncancelled Bukkit
+damage event and uses Paper's Adventure `AsyncChatEvent` for `AllowChatHandler`
+and `ChatHandler`. Pre-damage allow/deny and mob-conversion callbacks remain
+Fabric-specific and can be detected through `InitEvent.Capabilities`.
 
 An operator or the server console can inspect and manage the runtime with:
 
@@ -89,17 +118,30 @@ An operator or the server console can inspect and manage the runtime with:
 /gbm packages
 /gbm metadata <plugin-id>
 /gbm logs <plugin-id> [count]
+/gbm subscribe <plugin-id>
+/gbm unsubscribe <plugin-id|all>
 /gbm reload <plugin-id>
 /gbm rescan
+/gbm load <catalog-slug>
 ```
 
-On `1.21.1` and `26.1.2`, an operator using the matching Fabric client mod can
-also open the existing Cloth Config screen. The Paper plugin exposes the same
-`gbm:admin_request`/`gbm:admin_response` management channels, with
-package paths, metadata, logs, rescan, and reload withheld from non-OP players.
-Large responses are shortened below Paper's plugin-message limit; `/gbm` remains
-available for complete server-side output. A separate Fabric client target is
-still required before this UI can be used on Minecraft `1.21.11`.
+`/gbm subscribe <plugin-id>` forwards new SDK logs and captured Go
+stdout/stderr to that command sender until `/gbm unsubscribe <plugin-id|all>`
+is used. Player subscriptions are removed automatically on disconnect; console
+subscriptions remain active until explicitly removed or the Paper plugin stops.
+
+The Paper plugin creates `plugins/GBM/config.yml`; set `catalog.backend-url`
+there to the public GBM backend. `/gbm load <catalog-slug>` resolves one exact
+published slug and shows its name, authors, version, release channel, and
+description before presenting clickable `[y]`/`[n]` confirmation buttons. The
+confirmation expires after 60 seconds. An accepted package is downloaded with
+the existing size and SHA-256 checks and installed atomically under
+`plugins/GBM/plugins/<slug>/`. A new package is discovered and initialized
+immediately. Reinstalling an existing package writes the new binary but requires
+a full server restart before that binary can run.
+
+Paper/Purpur runtime information and controls are available through `/gbm` on
+the server. The Fabric client does not request or display server plugin state.
 
 Lifecycle reload does not unload the native library; replacing an already
 loaded binary still requires a full server restart. Start Paper/Purpur with
@@ -144,6 +186,12 @@ screen anchors and ARGB colors. Server actions, snapshot subscriptions,
 and system calls are rejected in a client process, so a client plugin cannot use
 the bridge to bypass a remote server's permissions.
 
+`InitEvent.Capabilities` reports the exact features implemented by the current
+Fabric client, Fabric server, or Paper host. Every action queued by the current
+SDK returns an ID and is acknowledged through the optional
+`ActionResultHandler`; built-in system calls continue to report through
+`SystemCallResultHandler`.
+
 A client plugin can replace its HUD scene from any callback. It remains visible
 until replaced, cleared, or the plugin stops:
 
@@ -174,7 +222,7 @@ composition clickable; vanilla buttons, inputs and selects are available when
 native widgets are useful. Events are delivered to `ClientScreenEventHandler`:
 
 ```go
-ctx.OpenClientScreen(sdk.ClientScreen{
+ctx.OpenScreen(sdk.ClientScreen{
     ID: "custom", Title: "Custom screen",
     Elements: []sdk.ClientScreenElement{
         {
@@ -195,17 +243,17 @@ ctx.OpenClientScreen(sdk.ClientScreen{
 })
 ```
 
-Elements are painted in slice order. Calling `OpenClientScreen` again with the
+Elements are painted in slice order. Calling `OpenScreen` again with the
 same ID replaces the retained scene, so event handlers can implement arbitrary
 stateful UI. `Fields` and `Buttons` remain shorthand for a conventional form;
 they do not constrain screens built through `Elements`.
 
-`CaptureClientScreen` requests the current complete framebuffer without a
+`CaptureScreen` requests the current complete framebuffer without a
 request ID. The result arrives as top-to-bottom RGBA8 bytes; it is not a PNG,
 Base64 value, or pre-decoded QR code:
 
 ```go
-func (myPlugin) ClientScreenCaptured(ctx *sdk.Context, capture sdk.ClientScreenCapture) error {
+func (myPlugin) ScreenCaptured(ctx *client.Context, capture sdk.ClientScreenCapture) error {
     pixels := capture.Pixels // valid during this callback
     _ = pixels
     return nil
@@ -213,13 +261,13 @@ func (myPlugin) ClientScreenCaptured(ctx *sdk.Context, capture sdk.ClientScreenC
 ```
 
 The runtime coalesces repeated requests from a plugin while a capture is in
-progress. Screen and capture methods are no-ops in a server callback, including
-the server side of an `environment=both` plugin.
+progress. Client screen methods are not exposed by `server.Context`.
 
-Native access must be enabled for the unnamed Java module:
+Native access and JOML's supported NIO memory path are enabled with:
 
 ```text
 --enable-native-access=ALL-UNNAMED
+-Djoml.nounsafe=true
 ```
 
 The development run configurations add this automatically. A production server
@@ -232,8 +280,8 @@ call registry.
 ## Cloth Config management screen
 
 Install the Cloth Config and Mod Menu versions from the target table, then open
-**Mods → GBM → Configure**. The screen always shows local client
-packages and, when supported by the connected server, server packages. It provides:
+**Mods → GBM → Configure**. The screen shows only local client packages and the
+public package catalog. For local packages it provides:
 
 - validation results for native packages found in `plugins` and `mods`;
 - plugin metadata, config schema, backend, origin, and lifecycle state;
@@ -285,16 +333,10 @@ new Mod Menu check. Call `unregisterUpdateChecker("my_plugin")` on the same
 adapter to detach it.
 
 Local client package inspection, logs, rescan, and lifecycle reload do not need
-server permission. Server information and controls still require a player from
-the server's vanilla OP list.
-
-Management data and actions are returned only to players present in the
-server's vanilla OP list. A non-OP response contains no package paths, plugin
-metadata, or logs. Cloth Config and Mod Menu are client-only optional
-integrations; a dedicated server only needs GBM and Fabric API.
-The client mod can remain installed when joining an ordinary server without the
-bridge: it detects the missing management channel and disables only the remote
-package/plugin screen for that connection.
+server permission. Cloth Config and Mod Menu are client-only optional
+integrations; a dedicated server only needs GBM and Fabric API. The client mod
+does not register a remote management channel and can remain installed when
+joining any server.
 
 Native libraries cannot be safely unloaded from a running JVM. Rescan can load a
 new file, and lifecycle reload can restart an existing plugin, but replacing the
@@ -303,19 +345,25 @@ restart.
 
 ## Plugin programming model
 
-A Go project only imports the SDK and registers one value. The native C exports,
-panic boundary, output allocation, and `gmb_free` implementation live inside the
-SDK and are linked into the final library automatically:
+A Go project imports the common SDK types and exactly one registration package.
+The native C exports, panic boundary, output allocation, and `gmb_free`
+implementation are linked into the final library automatically:
 
 ```go
 package main
 
-import "github.com/yawaflua/GoMinecraftBridge/sdk"
+import (
+    "github.com/yawaflua/GoMinecraftBridge/sdk"
+    "github.com/yawaflua/GoMinecraftBridge/sdk/server"
+)
 
 type myPlugin struct{}
 
 func init() {
-    sdk.Register(myPlugin{})
+    server.Register(sdk.Metadata{
+        ID: "my_plugin", Name: "My plugin", Version: "1.0.0",
+        License: "MIT", ConfigSchema: cfg,
+    }, myPlugin{})
 }
 
 func main() {}
@@ -346,21 +394,12 @@ type config struct {
 
 var cfg = &config{Greeting: "Hello from Go", Enabled: true}
 
-func (myPlugin) Metadata() sdk.Metadata {
-    return sdk.Metadata{
-        ID: "my_plugin", Name: "My plugin", Version: "1.0.0",
-        License: "MIT",
-        Environment: sdk.PluginEnvironmentClient,
-        ConfigSchema: cfg,
-    }
-}
-
-func (myPlugin) ConfigUpdated(ctx *sdk.Context, event sdk.ConfigUpdateEvent) error {
+func (myPlugin) ConfigUpdated(ctx *server.Context, event sdk.ConfigUpdateEvent) error {
     // cfg already contains the values saved in Cloth Config.
     return nil
 }
 
-func (myPlugin) Tick(ctx *sdk.Context, snapshot sdk.ServerSnapshot) error {
+func (myPlugin) Tick(ctx *server.Context, snapshot sdk.ServerSnapshot) error {
     for _, entity := range snapshot.Entities {
         // Read the immutable snapshot.
         _ = entity
@@ -368,21 +407,34 @@ func (myPlugin) Tick(ctx *sdk.Context, snapshot sdk.ServerSnapshot) error {
     return nil
 }
 
-func (myPlugin) Chat(ctx *sdk.Context, event sdk.ChatEvent) error {
+func (myPlugin) Chat(ctx *server.Context, event sdk.ChatEvent) error {
     ctx.SendMessage(event.PlayerUUID, "Hello from Go")
     return nil
 }
 
-func (myPlugin) ClientTick(ctx *sdk.Context, event sdk.ClientTickEvent) error {
-    if event.Connected && event.Tick%200 == 0 {
-        ctx.DisplayClientMessage("Client Go runtime is active")
-    }
-    return nil
-}
 ```
 
+Client-only plugins use `client.Register`; a single binary with independent
+server and client parts uses `dual.Register(metadata, serverPart, clientPart)`.
+
 See [`examples/hello-native/main.go`](examples/hello-native/main.go) for a
-complete native entrypoint and every currently supported callback.
+complete native entrypoint demonstrating both server and client callbacks.
+
+`InteractionHandler` observes left/right clicks on blocks and entities without
+cancelling vanilla behavior. The event includes `Sneaking`, `Hand`, the complete
+player snapshot, and either `Block` or `Target`. The example demonstrates
+Shift-click detection for signs and player entities.
+
+`PlayerJoinHandler` and `PlayerDisconnectHandler` receive a
+`PlayerConnectionEvent` containing the complete player snapshot and timestamp.
+They are server-only observational callbacks; returning an error cannot accept
+or reject a connection. See [`examples/hello-server/main.go`](examples/hello-server/main.go)
+for a server plugin that logs both events and broadcasts join/leave messages.
+
+`AllowChatHandler` runs before the observational `ChatHandler`. Returning
+`false` cancels the vanilla chat message; missing handlers and handler errors
+are fail-open. The `hello-server` example rejects a selected word and sends a
+private explanation to the player.
 
 ### Snapshots
 
@@ -409,9 +461,9 @@ Actions are fire-and-forget operations implemented by the bridge:
 
 - `minecraft:chat.broadcast`;
 - `minecraft:chat.player`;
-- `minecraft:client.chat.display` via `ctx.DisplayClientMessage(...)` (client runtime only).
+- `minecraft:client.chat.display` via `ctx.DisplayMessage(...)` (client runtime only).
 - `minecraft:client.screen.open` and `.close` via the typed screen API;
-- `minecraft:client.screen.capture` via `ctx.CaptureClientScreen()`.
+- `minecraft:client.screen.capture` via `ctx.CaptureScreen()`.
 
 System calls return a result to the plugin's `SystemCallResult` callback. Built-in
 calls currently include:
@@ -484,7 +536,7 @@ and the wire-level contract in [`docs/native-abi.md`](docs/native-abi.md).
 
 ## Codec and performance
 
-ABI v2 uses FlatBuffers for the high-frequency Java → Go tick snapshot. Metadata,
+ABI v3 uses FlatBuffers for the high-frequency Java → Go tick snapshot. Metadata,
 initialization, chat/death events, logs, actions, and arbitrary system calls stay
 JSON because they are smaller and occur less often. Plugin code still receives a
 normal `sdk.ServerSnapshot`; generated FlatBuffers types are internal to the SDK.

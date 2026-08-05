@@ -2,6 +2,8 @@
 build/
 run/
 out/
+**/bin/
+*.class
 .idea/
 *.iml
 *.so

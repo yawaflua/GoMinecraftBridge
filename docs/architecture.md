@@ -32,7 +32,7 @@ client runtime
 - `fabric`: Fabric server event wiring. `GoMinecraftBridgeMod` is only the
   loader entry point; `GbmFabricServerRuntime` owns runtime bindings.
 - `client/runtime`: the client composition root. `GbmClientRuntime` coordinates
-  local plugins, remote administration, catalog jobs, and UI-facing state.
+  local plugins, catalog jobs, and UI-facing state.
 - `client/catalog`: asynchronous search/install/update operations. Minecraft
   screens read snapshots instead of owning worker threads or network calls.
 - `client/plugin`: local configuration persistence and interpretation of plugin

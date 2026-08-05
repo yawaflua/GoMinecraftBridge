@@ -1,6 +1,7 @@
 plugins {
 	id 'net.fabricmc.fabric-loom'
 	id 'maven-publish'
+	id 'com.modrinth.minotaur'
 }
 
 version = rootProject.mod_version
@@ -30,6 +31,7 @@ loom {
 	runs {
 		configureEach {
 			vmArg '--enable-native-access=ALL-UNNAMED'
+			vmArg '-Djoml.nounsafe=true'
 		}
 	}
 }
@@ -78,12 +80,34 @@ tasks.withType(JavaCompile).configureEach {
 tasks.withType(Test).configureEach {
 	useJUnitPlatform()
 	jvmArgs '--enable-native-access=ALL-UNNAMED'
+	jvmArgs '-Djoml.nounsafe=true'
 }
 
 java {
 	withSourcesJar()
 	sourceCompatibility = JavaVersion.VERSION_25
 	targetCompatibility = JavaVersion.VERSION_25
+}
+
+modrinth {
+	projectId = rootProject.providers.gradleProperty('modrinth_project_id')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_PROJECT_ID'))
+			.getOrElse('')
+	versionNumber = "${project.version}-fabric-26.1.2"
+	versionName = "GBM ${project.version} for Fabric/Quilt 26.1.2"
+	versionType = rootProject.providers.gradleProperty('modrinth_version_type')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_VERSION_TYPE'))
+			.getOrElse('beta')
+	changelog = rootProject.providers.gradleProperty('modrinth_changelog')
+			.orElse(rootProject.providers.environmentVariable('MODRINTH_CHANGELOG'))
+			.getOrElse("GBM ${project.version}")
+	uploadFile = tasks.named('jar')
+	gameVersions = ['26.1.2']
+	loaders = ['fabric', 'quilt']
+	detectLoaders = false
+	dependencies {
+		required.project 'fabric-api'
+	}
 }
 
 publishing {

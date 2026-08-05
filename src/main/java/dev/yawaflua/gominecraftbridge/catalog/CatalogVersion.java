@@ -46,6 +46,18 @@ public record CatalogVersion(
 					|| environment.equalsIgnoreCase("client")
 					|| environment.equalsIgnoreCase("both");
 		}
+
+		public boolean supportsServer() {
+			return environment.equals("PLUGIN_ENVIRONMENT_SERVER")
+					|| environment.equals("PLUGIN_ENVIRONMENT_BOTH")
+					|| environment.equalsIgnoreCase("server")
+					|| environment.equalsIgnoreCase("both");
+		}
+
+		public boolean supportsProtocol(int version) {
+			String expected = Integer.toString(version);
+			return abiVersion.equals(expected) && apiVersion.equals(expected);
+		}
 	}
 
 	private static String value(String value) {

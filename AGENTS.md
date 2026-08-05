@@ -8,7 +8,7 @@
 
 ## Что это за проект
 
-GBM (GoBridgeMinecraft/GoMinecraftBridge) запускает плагины, написанные на Go, внутри Minecraft-процесса. Go-плагин собирается как нативная библиотека через `-buildmode=c-shared`; Java-хост загружает её через JNA и вызывает стабильный C ABI v2. Хотя интеграцию иногда называют JNI, текущая реализация — JNA поверх трёх C-символов `gmb_abi_version`, `gmb_call` и `gmb_free`.
+GBM (GoBridgeMinecraft/GoMinecraftBridge) запускает плагины, написанные на Go, внутри Minecraft-процесса. Go-плагин собирается как нативная библиотека через `-buildmode=c-shared`; Java-хост загружает её через JNA и вызывает стабильный C ABI v3. Хотя интеграцию иногда называют JNI, текущая реализация — JNA поверх трёх C-символов `gmb_abi_version`, `gmb_call` и `gmb_free`.
 
 В одном репозитории находятся:
 
@@ -54,7 +54,7 @@ Cloth UI
 - `gradlew`, `gradlew.bat`, `gradle/wrapper/**` — закреплённый Gradle wrapper; используй его, а не случайный системный Gradle.
 - `README.md` — пользовательская установка, API SDK, сборка и ограничения runtime.
 - `docs/architecture.md` — границы Java-пакетов и рекомендуемые точки расширения.
-- `docs/native-abi.md` — каноническое описание ABI v2, операций, форматов и владения памятью.
+- `docs/native-abi.md` — каноническое описание ABI v3, операций, форматов и владения памятью.
 - `schema/tick_snapshot.fbs` — схема высокочастотного tick snapshot с идентификатором `GMBS`.
 - `.github/workflows/**` — фактические CI/release-команды для Java, SDK, backend и frontend.
 - `icon.png`, `LICENSE` — общий ресурс артефактов и корневая лицензия.
@@ -210,7 +210,7 @@ Frontend не дублирует backend business rules. При изменени
 5. Panic даёт `status=panic` и логически отключает plugin; обычная handler error логируется, но не обязана отключать его.
 6. Allow-damage/allow-death работают fail-open при отсутствии handler, ошибке, panic или некорректном ответе; успешный `false` запрещает событие.
 7. Нативная Go-библиотека намеренно остаётся загруженной до завершения JVM. Reload означает `deinit` + сброс логического state + повторный `init`, но не `NativeLibrary.dispose()` и не замену уже загруженного binary. Физическая выгрузка живого Go runtime небезопасна.
-8. Server host принимает `server`/`both`, client host — `client`/`both`; отсутствующее legacy metadata environment трактуется как `server`.
+8. Server host принимает `server`/`both`, client host — `client`/`both`; ABI v3 требует явно объявленную среду, которую устанавливает side-specific SDK registration package.
 9. Client runtime разрешает только локальные client actions (chat/HUD) и не должен превращаться в обход permissions удалённого сервера.
 
 ### Discovery, файлы и каталог

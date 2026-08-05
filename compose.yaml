@@ -1,0 +1,16 @@
+services:
+  mc:
+    image: itzg/minecraft-server:latest
+    pull_policy: daily
+    tty: true
+    stdin_open: true
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: "PURPUR"
+      VERSION: "26.1.2"
+      JVM_OPTS: "--enable-native-access=ALL-UNNAMED -Djoml.nounsafe=true"
+    volumes:
+      # attach the relative directory 'data' to the container's /data path
+      - ./run/minecraft-server:/data

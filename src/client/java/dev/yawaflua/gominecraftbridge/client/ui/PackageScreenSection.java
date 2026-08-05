@@ -1,6 +1,5 @@
 package dev.yawaflua.gominecraftbridge.client.ui;
 
-import dev.yawaflua.gominecraftbridge.client.runtime.ServerConnectionStatus;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.PackageInspection;
@@ -26,20 +25,6 @@ public final class PackageScreenSection {
 	private PackageScreenSection() {
 	}
 
-	public static void addConnectionStatus(
-			ConfigCategory category,
-			ConfigEntryBuilder entries,
-			ServerConnectionStatus status
-	) {
-		String message = switch (status) {
-			case DISCONNECTED -> "Join a server to inspect its GBM packages and plugins.";
-			case CONNECTING -> "Connecting and checking server-side GBM support…";
-			case UNSUPPORTED -> "This server does not have GBM; remote management is unavailable.";
-			case AVAILABLE -> "Requesting GBM package and plugin state from the server…";
-		};
-		category.addEntry(entries.startTextDescription(Component.literal(message)).build());
-	}
-
 	public static void addOverview(
 			ConfigCategory category,
 			ConfigEntryBuilder entries,
@@ -58,9 +43,7 @@ public final class PackageScreenSection {
 		}
 		if (!snapshot.canReload()) {
 			category.addEntry(entries.startTextDescription(Component.literal(
-					scope.equals("Server")
-							? "Package details and controls require server operator permission."
-							: "Client reload and rescan are unavailable while the native runtime is stopped."
+					"Client reload and rescan are unavailable while the native runtime is stopped."
 			)).build());
 			return;
 		}
@@ -106,8 +89,8 @@ public final class PackageScreenSection {
 						+ "\nEnvironment: " + environment(metadata.environment())
 						+ "\nAuthors: " + String.join(", ", metadata.authors())
 						+ "\nSite: " + value(metadata.website())
-						+ "\nBackend: " + plugin.backend()
-						+ "\nPath: " + plugin.origin()
+						+ "\nBackend: " + value(plugin.backend())
+						+ "\nPath: " + value(plugin.origin())
 		)).build());
 
 		if (metadata.configSchema() != null) {

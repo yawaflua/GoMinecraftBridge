@@ -2,9 +2,6 @@ package dev.yawaflua.gominecraftbridge.host;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
-import dev.yawaflua.gominecraftbridge.protocol.AfterDamageEvent;
-import dev.yawaflua.gominecraftbridge.protocol.AllowDamageEvent;
-import dev.yawaflua.gominecraftbridge.protocol.AllowDeathEvent;
 import dev.yawaflua.gominecraftbridge.api.GoMinecraftBridgeApi;
 import dev.yawaflua.gominecraftbridge.api.SystemCallContext;
 import dev.yawaflua.gominecraftbridge.api.SystemCallHandler;
@@ -13,11 +10,20 @@ import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.PackageInspection;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
+import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
+import dev.yawaflua.gominecraftbridge.protocol.ActionResult;
+import dev.yawaflua.gominecraftbridge.protocol.AfterDamageEvent;
+import dev.yawaflua.gominecraftbridge.protocol.AllowDamageEvent;
+import dev.yawaflua.gominecraftbridge.protocol.AllowDeathEvent;
+import dev.yawaflua.gominecraftbridge.protocol.BridgeCapabilities;
 import dev.yawaflua.gominecraftbridge.protocol.ChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeathEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
 import dev.yawaflua.gominecraftbridge.protocol.InitEvent;
+import dev.yawaflua.gominecraftbridge.protocol.InteractionEvent;
 import dev.yawaflua.gominecraftbridge.protocol.MobConversionEvent;
+import dev.yawaflua.gominecraftbridge.protocol.PlayerConnectionEvent;
+import dev.yawaflua.gominecraftbridge.protocol.PluginEnvironment;
 import dev.yawaflua.gominecraftbridge.protocol.PluginLog;
 import dev.yawaflua.gominecraftbridge.protocol.PluginResponse;
 import dev.yawaflua.gominecraftbridge.protocol.Protocol;
@@ -31,12 +37,12 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
-import java.time.Instant;
 
 public final class GoPluginManager {
-	private static final int MAX_SYSTEM_CALL_CHAIN = 32;
+	private static final int MAX_CALLBACK_CHAIN = 32;
 
 	private final Logger logger;
 	private final Path legacyPluginDirectory;
@@ -123,6 +129,28 @@ public final class GoPluginManager {
 	public synchronized void chat(ChatEvent event, MinecraftServer server) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			invoke(plugin, Protocol.Operation.CHAT, event, server);
+		}
+	}
+
+	public synchronized boolean allowChat(ChatEvent event, MinecraftServer server) {
+		return decide(Protocol.Operation.ALLOW_CHAT, event, server);
+	}
+
+	public synchronized void playerJoin(PlayerConnectionEvent event, MinecraftServer server) {
+		for (LoadedPlugin plugin : runningPlugins()) {
+			invoke(plugin, Protocol.Operation.PLAYER_JOIN, event, server);
+		}
+	}
+
+	public synchronized void playerDisconnect(PlayerConnectionEvent event, MinecraftServer server) {
+		for (LoadedPlugin plugin : runningPlugins()) {
+			invoke(plugin, Protocol.Operation.PLAYER_DISCONNECT, event, server);
+		}
+	}
+
+	public synchronized void interaction(InteractionEvent event, MinecraftServer server) {
+		for (LoadedPlugin plugin : runningPlugins()) {
+			invoke(plugin, Protocol.Operation.INTERACTION, event, server);
 		}
 	}
 
@@ -244,7 +272,9 @@ public final class GoPluginManager {
 					new InitEvent(
 							MinecraftVersionAdapter.gameVersion(),
 							server.isDedicatedServer(),
-							pluginData.toAbsolutePath().toString()
+							pluginData.toAbsolutePath().toString(),
+							PluginEnvironment.SERVER,
+							BridgeCapabilities.fabricServer(GoMinecraftBridgeApi.systemCalls().entries().keySet())
 					)
 			);
 			processResponse(plugin, response, server, 0);
@@ -309,7 +339,7 @@ public final class GoPluginManager {
 			LoadedPlugin plugin,
 			PluginResponse response,
 			MinecraftServer server,
-			int systemCallDepth
+			int callbackDepth
 	) {
 		for (PluginLog log : response.logs()) {
 			writeLog(plugin, log);
@@ -333,19 +363,29 @@ public final class GoPluginManager {
 			this.logger.error("Go plugin {} returned an error: {}", plugin.metadata().id(), response.error());
 		}
 
-		response.actions().forEach(action -> {
-			try {
-				this.actions.execute(server, action);
-			} catch (RuntimeException exception) {
-				this.logger.error("Action {} from plugin {} failed", action.type(), plugin.metadata().id(), exception);
+		for (ActionRequest action : response.actions()) {
+			ActionResult result = executeAction(plugin, action, server);
+			if (action.id() == null || action.id().isBlank()) {
+				continue;
 			}
-		});
+			if (callbackDepth >= MAX_CALLBACK_CHAIN) {
+				disable(plugin, "callback chain exceeded " + MAX_CALLBACK_CHAIN, null);
+				return;
+			}
+			try {
+				PluginResponse nested = plugin.invoke(Protocol.Operation.ACTION_RESULT, result);
+				processResponse(plugin, nested, server, callbackDepth + 1);
+			} catch (RuntimeException exception) {
+				disable(plugin, "action result callback failed", exception);
+				return;
+			}
+		}
 
 		if (response.systemCalls().isEmpty()) {
 			return;
 		}
-		if (systemCallDepth >= MAX_SYSTEM_CALL_CHAIN) {
-			disable(plugin, "system call chain exceeded " + MAX_SYSTEM_CALL_CHAIN, null);
+		if (callbackDepth >= MAX_CALLBACK_CHAIN) {
+			disable(plugin, "callback chain exceeded " + MAX_CALLBACK_CHAIN, null);
 			return;
 		}
 
@@ -353,11 +393,22 @@ public final class GoPluginManager {
 			SystemCallResult result = executeSystemCall(plugin, request, server);
 			try {
 				PluginResponse nested = plugin.invoke(Protocol.Operation.SYSTEM_CALL_RESULT, result);
-				processResponse(plugin, nested, server, systemCallDepth + 1);
+				processResponse(plugin, nested, server, callbackDepth + 1);
 			} catch (RuntimeException exception) {
 				disable(plugin, "system call result callback failed", exception);
 				return;
 			}
+		}
+	}
+
+	private ActionResult executeAction(LoadedPlugin plugin, ActionRequest action, MinecraftServer server) {
+		try {
+			this.actions.execute(server, action);
+			return new ActionResult(action.id(), action.type(), true, null);
+		} catch (RuntimeException exception) {
+			String error = rootMessage(exception);
+			this.logger.error("Action {} from plugin {} failed", action.type(), plugin.metadata().id(), exception);
+			return new ActionResult(action.id(), action.type(), false, error);
 		}
 	}
 

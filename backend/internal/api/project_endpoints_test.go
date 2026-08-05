@@ -206,8 +206,8 @@ func TestUploadProjectVersionPersistsArchiveDigestAndMetadata(t *testing.T) {
 			Description: "plugin metadata",
 			Licenses:    []string{"MIT"},
 			Authors:     []string{"author"},
-			AbiVersion:  "2",
-			ApiVersion:  "1",
+			AbiVersion:  supportedNativeProtocolVersion,
+			ApiVersion:  supportedNativeProtocolVersion,
 			Environment: projectv1.PluginEnvironment_PLUGIN_ENVIRONMENT_BOTH,
 		},
 		Archive: &httpbody.HttpBody{
@@ -230,6 +230,34 @@ func TestUploadProjectVersionPersistsArchiveDigestAndMetadata(t *testing.T) {
 	}
 	if database.uploaded.Metadata.Environment != "both" {
 		t.Fatalf("metadata environment = %q, want both", database.uploaded.Metadata.Environment)
+	}
+}
+
+func TestUploadProjectVersionRejectsOldProtocol(t *testing.T) {
+	t.Parallel()
+
+	owner := models.User{Id: uuid.New(), Roles: []string{"user"}, Status: models.UserStatusActive}
+	database := &versionEndpointDatabase{project: models.Project{
+		Id: uuid.New(), AuthorId: owner.Id, Status: models.ProjectStatusDraft,
+	}}
+	service := NewService(ServiceDependencies{DB: database})
+	ctx := auth.ContextWithUser(context.Background(), owner)
+
+	_, err := service.UploadProjectVersion(ctx, &projectv1.UploadProjectVersionRequest{
+		ProjectId: database.project.Id.String(),
+		Version:   "1.0.0",
+		Tag:       projectv1.VersionTag_VERSION_TAG_RELEASE,
+		Metadata: &projectv1.VersionMetadata{
+			Slug: "plugin", AbiVersion: "2", ApiVersion: "2",
+			Environment: projectv1.PluginEnvironment_PLUGIN_ENVIRONMENT_SERVER,
+		},
+		Archive: &httpbody.HttpBody{ContentType: "application/zip", Data: []byte("archive")},
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("UploadProjectVersion() code = %s, want %s", status.Code(err), codes.InvalidArgument)
+	}
+	if database.uploaded != nil {
+		t.Fatal("UploadProjectVersion() persisted an ABI v2 package")
 	}
 }
 

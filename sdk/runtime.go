@@ -15,8 +15,8 @@ var (
 	registeredPlugin Plugin
 )
 
-// Register registers a plugin with the server.
-func Register(plugin Plugin) {
+// RegisterRuntime installs the low-level plugin adapter used by the side-specific SDK packages.
+func RegisterRuntime(plugin Plugin) {
 	if plugin == nil {
 		panic("sdk: cannot register a nil plugin")
 	}
@@ -64,9 +64,15 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		metadata := plugin.Metadata()
 		if metadata.APIVersion == 0 {
 			metadata.APIVersion = ABIVersion
+		} else if metadata.APIVersion != ABIVersion {
+			err = fmt.Errorf("sdk: api version must be %d", ABIVersion)
+			break
 		}
-		if metadata.Environment == "" {
-			metadata.Environment = PluginEnvironmentServer
+		if metadata.Environment != PluginEnvironmentServer &&
+			metadata.Environment != PluginEnvironmentClient &&
+			metadata.Environment != PluginEnvironmentBoth {
+			err = errors.New("sdk: plugin environment must be server, client, or both")
+			break
 		}
 		metadata.ConfigWritable = configWritable(plugin, metadata.ConfigSchema)
 		result.Data = metadata
@@ -136,6 +142,9 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		if err == nil {
 			metadata := plugin.Metadata()
 			handler, handlesUpdate := plugin.(ConfigUpdateHandler)
+			if support, ok := plugin.(ConfigUpdateSupport); ok {
+				handlesUpdate = support.HandlesConfigUpdates(context.RuntimeEnvironment())
+			}
 			previous, _ := json.Marshal(metadata.ConfigSchema)
 			updateErr := updateConfigTarget(metadata.ConfigSchema, event.Config)
 			automaticallyUpdated := updateErr == nil
@@ -216,6 +225,50 @@ func Dispatch(operation int, input []byte) (output []byte) {
 				err = handler.ClientScreenCaptured(context, capture)
 			}
 		}
+	case OperationInteraction:
+		var event InteractionEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(InteractionHandler); ok {
+				err = handler.Interaction(context, event)
+			}
+		}
+	case OperationActionResult:
+		var event ActionResult
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(ActionResultHandler); ok {
+				err = handler.ActionResult(context, event)
+			}
+		}
+	case OperationPlayerJoin:
+		var event PlayerConnectionEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(PlayerJoinHandler); ok {
+				err = handler.PlayerJoin(context, event)
+			}
+		}
+	case OperationPlayerDisconnect:
+		var event PlayerConnectionEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(PlayerDisconnectHandler); ok {
+				err = handler.PlayerDisconnect(context, event)
+			}
+		}
+	case OperationAllowChat:
+		var event ChatEvent
+		err = decode(input, &event)
+		if err == nil {
+			allowed := true
+			if handler, ok := plugin.(AllowChatHandler); ok {
+				allowed, err = handler.AllowChat(context, event)
+			}
+			if err == nil {
+				result.Data = allowed
+			}
+		}
 	default:
 		err = fmt.Errorf("sdk: unknown operation %d", operation)
 	}
@@ -278,7 +331,12 @@ func updateConfigTarget(target any, config json.RawMessage) error {
 }
 
 func configWritable(plugin Plugin, target any) bool {
-	if _, ok := plugin.(ConfigUpdateHandler); ok {
+	if support, ok := plugin.(ConfigUpdateSupport); ok {
+		if support.HandlesConfigUpdates(PluginEnvironmentServer) ||
+			support.HandlesConfigUpdates(PluginEnvironmentClient) {
+			return target != nil
+		}
+	} else if _, ok := plugin.(ConfigUpdateHandler); ok {
 		return target != nil
 	}
 	if target == nil {
@@ -292,7 +350,7 @@ func currentPlugin() Plugin {
 	pluginMu.RLock()
 	defer pluginMu.RUnlock()
 	if registeredPlugin == nil {
-		panic("sdk: plugin was not registered; call sdk.Register from init")
+		panic("sdk: plugin was not registered; call server.Register, client.Register, or dual.Register from init")
 	}
 	return registeredPlugin
 }
