@@ -10,6 +10,10 @@ type TickHandler interface {
 	Tick(context *Context, event sdk.ClientTickEvent) error
 }
 
+type KeyHandler interface {
+	KeyPressed(context *Context, event sdk.ClientKeyEvent) error
+}
+
 type ConfigUpdateHandler interface {
 	ConfigUpdated(context *Context, event sdk.ConfigUpdateEvent) error
 }
@@ -73,6 +77,13 @@ func (adapter *adapter) Init(context *sdk.Context, event sdk.InitEvent) error {
 func (adapter *adapter) ClientTick(context *sdk.Context, event sdk.ClientTickEvent) error {
 	if handler, ok := adapter.plugin.(TickHandler); ok {
 		return handler.Tick(wrapContext(context), event)
+	}
+	return nil
+}
+
+func (adapter *adapter) ClientKey(context *sdk.Context, event sdk.ClientKeyEvent) error {
+	if handler, ok := adapter.plugin.(KeyHandler); ok {
+		return handler.KeyPressed(wrapContext(context), event)
 	}
 	return nil
 }
