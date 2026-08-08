@@ -69,6 +69,8 @@ jobs:
           mkdir -p release
           cp "versions/1.21.1/build/libs/gbm-1.21.1-${version}.jar" release/
           cp "versions/1.21.1/build/libs/gbm-1.21.1-${version}-sources.jar" release/
+          cp "versions/1.21.11/build/libs/gbm-1.21.11-${version}.jar" release/
+          cp "versions/1.21.11/build/libs/gbm-1.21.11-${version}-sources.jar" release/
           cp "versions/26.1.2/build/libs/gbm-26.1.2-${version}.jar" release/
           cp "versions/26.1.2/build/libs/gbm-26.1.2-${version}-sources.jar" release/
           cp "platforms/paper/build/libs/gbm-paper-${version}.jar" release/

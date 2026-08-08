@@ -22,6 +22,9 @@ rootProject.name = 'gbm'
 include 'mc1211'
 project(':mc1211').projectDir = file('versions/1.21.1')
 
+include 'mc12111'
+project(':mc12111').projectDir = file('versions/1.21.11')
+
 include 'mc2612'
 project(':mc2612').projectDir = file('versions/26.1.2')
 

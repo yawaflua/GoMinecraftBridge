@@ -39,23 +39,23 @@ subprojects {
 }
 
 tasks.named('build') {
-	dependsOn ':mc1211:build', ':mc2612:build', ':paper:build'
+	dependsOn ':mc1211:build', ':mc12111:build', ':mc2612:build', ':paper:build'
 }
 
 tasks.register('buildAll') {
 	group = 'build'
 	description = 'Builds every supported Minecraft target.'
-	dependsOn ':mc1211:build', ':mc2612:build', ':paper:build'
+	dependsOn ':mc1211:build', ':mc12111:build', ':mc2612:build', ':paper:build'
 }
 
 tasks.register('testAll') {
 	group = 'verification'
 	description = 'Runs tests for every supported Minecraft target.'
-	dependsOn ':mc1211:test', ':mc2612:test', ':paper:test'
+	dependsOn ':mc1211:test', ':mc12111:test', ':mc2612:test', ':paper:test'
 }
 
 tasks.register('publishModrinth') {
 	group = 'publishing'
 	description = 'Publishes every supported Minecraft target to Modrinth.'
-	dependsOn ':mc1211:modrinth', ':mc2612:modrinth', ':paper:modrinth'
+	dependsOn ':mc1211:modrinth', ':mc12111:modrinth', ':mc2612:modrinth', ':paper:modrinth'
 }

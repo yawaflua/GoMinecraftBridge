@@ -8,7 +8,7 @@ version = rootProject.mod_version
 group = rootProject.maven_group
 
 base {
-	archivesName = "${rootProject.archives_base_name}-1.21.1"
+	archivesName = "${rootProject.archives_base_name}-1.21.11"
 }
 
 repositories {
@@ -60,17 +60,17 @@ sourceSets {
 }
 
 dependencies {
-	minecraft 'com.mojang:minecraft:1.21.1'
+	minecraft 'com.mojang:minecraft:1.21.11'
 	mappings loom.officialMojangMappings()
-	modImplementation 'net.fabricmc:fabric-loader:0.16.14'
-	modImplementation 'net.fabricmc.fabric-api:fabric-api:0.116.14+1.21.1'
+	modImplementation 'net.fabricmc:fabric-loader:0.19.3'
+	modImplementation 'net.fabricmc.fabric-api:fabric-api:0.141.5+1.21.11'
 
 	implementation 'com.google.code.gson:gson:2.13.2'
 	implementation include('com.google.flatbuffers:flatbuffers-java:25.2.10')
 	implementation 'net.java.dev.jna:jna:5.18.1'
 
-	modClientImplementation 'me.shedaniel.cloth:cloth-config-fabric:15.0.140'
-	modClientImplementation 'maven.modrinth:modmenu:11.0.3'
+	modClientImplementation 'me.shedaniel.cloth:cloth-config-fabric:21.11.153'
+	modClientImplementation 'maven.modrinth:modmenu:17.0.0'
 
 	testImplementation platform('org.junit:junit-bom:5.13.4')
 	testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -108,8 +108,8 @@ modrinth {
 	projectId = rootProject.providers.gradleProperty('modrinth_project_id')
 			.orElse(rootProject.providers.environmentVariable('MODRINTH_PROJECT_ID'))
 			.getOrElse('')
-	versionNumber = "${project.version}-fabric-1.21.1"
-	versionName = "GBM ${project.version} for Fabric/Quilt 1.21.1"
+	versionNumber = "${project.version}-fabric-1.21.11"
+	versionName = "GBM ${project.version} for Fabric/Quilt 1.21.11"
 	versionType = rootProject.providers.gradleProperty('modrinth_version_type')
 			.orElse(rootProject.providers.environmentVariable('MODRINTH_VERSION_TYPE'))
 			.getOrElse('beta')
@@ -117,7 +117,7 @@ modrinth {
 			.orElse(rootProject.providers.environmentVariable('MODRINTH_CHANGELOG'))
 			.getOrElse("GBM ${project.version}")
 	uploadFile = tasks.named('remapJar')
-	gameVersions = ['1.21.1']
+	gameVersions = ['1.21.11']
 	loaders = ['fabric', 'quilt']
 	detectLoaders = false
 	dependencies {

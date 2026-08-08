@@ -4,15 +4,16 @@ GBM (GoBridgeMinecraft) hosts plugins written in Go in both Minecraft server and
 client processes. The Minecraft-facing code stays in Java, while plugin logic
 receives immutable snapshots/events and returns actions or named system calls.
 
-The shared code is built as two version-specific Fabric artifacts:
+The shared code is built as three version-specific Fabric artifacts:
 
 | Minecraft | Java | Loader | Fabric API | Cloth Config | Mod Menu |
 |---|---:|---:|---:|---:|---:|
 | `1.21.1` | 21 | `0.16.14` | `0.116.14+1.21.1` | `15.0.140` | `11.0.3` |
+| `1.21.11` | 21 | `0.19.3` | `0.141.5+1.21.11` | `21.11.153` | `17.0.0` |
 | `26.1.2` | 25 | `0.19.3` | `0.149.1+26.1.2` | `26.1.154` | `18.0.0` |
 
-Architectury Loom drives the portable 1.21.1 target, with a small source
-overlay for Minecraft API differences. The unobfuscated 26.1.2 target uses
+Architectury Loom drives the portable 1.21.1 and 1.21.11 targets, with small source
+overlays for Minecraft API differences. The unobfuscated 26.1.2 target uses
 Fabric Loom because Architectury Loom currently requires a mappings artifact
 that this Minecraft distribution does not publish. Architectury portability
 still produces one JAR per Minecraft ABI; it does not make one universal JAR.
@@ -53,7 +54,7 @@ Paper-compatible server implementation.
 
 ## Build and try the example
 
-Build both Fabric targets:
+Build all Fabric targets:
 
 ```bash
 ./gradlew build
@@ -63,12 +64,13 @@ The production JARs are written to:
 
 ```text
 versions/1.21.1/build/libs/gbm-1.21.1-<version>.jar
+versions/1.21.11/build/libs/gbm-1.21.11-<version>.jar
 versions/26.1.2/build/libs/gbm-26.1.2-<version>.jar
 platforms/paper/build/libs/gbm-paper-<version>.jar
 ```
 
-Run a development client for one target with `./gradlew :mc1211:runClient` or
-`./gradlew :mc2612:runClient`.
+Run a development client for one target with `./gradlew :mc1211:runClient`,
+`./gradlew :mc12111:runClient`, or `./gradlew :mc2612:runClient`.
 
 ## Publish to Modrinth
 

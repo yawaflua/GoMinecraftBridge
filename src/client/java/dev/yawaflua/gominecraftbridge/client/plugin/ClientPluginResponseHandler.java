@@ -2,6 +2,7 @@ package dev.yawaflua.gominecraftbridge.client.plugin;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
+import dev.yawaflua.gominecraftbridge.client.ClientChatDisplay;
 import dev.yawaflua.gominecraftbridge.client.ClientHudState;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenCaptureController;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenController;
@@ -215,7 +216,7 @@ public final class ClientPluginResponseHandler {
 		if (client.player == null) {
 			throw new IllegalStateException("Cannot display client message outside a world");
 		}
-		client.player.sendSystemMessage(Component.literal(message.getAsString()));
+		ClientChatDisplay.display(client, Component.literal(message.getAsString()));
 	}
 
 	private void writeLog(LoadedPlugin plugin, PluginLog log) {
