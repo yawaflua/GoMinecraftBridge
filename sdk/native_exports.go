@@ -31,7 +31,8 @@ func gmb_call(
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			fallback := []byte(fmt.Sprintf(`{"status":"panic","error":%q}`, fmt.Sprint(recovered)))
+			fallback := fmt.Appendf(nil, `{"status":"panic","error":%q}`, fmt.Sprint(recovered))
+
 			writeNativeOutput(fallback, output, outputLength)
 			status = 0
 		}
