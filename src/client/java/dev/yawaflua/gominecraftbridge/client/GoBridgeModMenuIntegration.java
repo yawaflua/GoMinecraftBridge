@@ -24,11 +24,11 @@ public final class GoBridgeModMenuIntegration implements ModMenuApi {
 			return Map.of();
 		}
 		var runtime = GoMinecraftBridgeClient.runtime();
-		return runtime.modMenu().configScreenFactories(runtime.localPlugins().plugins());
+		return ((GbmModMenuAdapter) runtime.modMenu()).configScreenFactories(runtime.localPlugins().plugins());
 	}
 
 	@Override
 	public Map<String, UpdateChecker> getProvidedUpdateCheckers() {
-		return GoMinecraftBridgeClient.runtime().modMenu().updateCheckers();
+		return ((GbmModMenuAdapter) GoMinecraftBridgeClient.runtime().modMenu()).updateCheckers();
 	}
 }

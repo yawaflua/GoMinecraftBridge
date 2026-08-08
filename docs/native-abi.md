@@ -49,6 +49,7 @@ panics are represented in the JSON response rather than the C status.
 | 18 | player join | `PlayerConnectionEvent` |
 | 19 | player disconnect | `PlayerConnectionEvent` |
 | 20 | allow chat | `ChatEvent`; boolean decision in response `data` |
+| 21 | client key | `ClientKeyEvent` JSON |
 
 Operations 10, 12, and 20 are synchronous decisions. Damage and death decisions
 are Fabric-only; chat decisions are supported by Fabric and Paper. A plugin that
@@ -158,7 +159,11 @@ player UUID/name, and current dimension; world-dependent strings are absent
 outside a world.
 
 The client runtime accepts local chat, retained HUD, custom retained screens,
-and framebuffer-capture actions. `client.Context.OpenScreen` accepts an ordered
+framebuffer-capture actions, and configurable key bindings. Client and `both`
+plugins declare key bindings in metadata with an ID, display name, and Minecraft
+input name such as `key.keyboard.p`. Minecraft exposes them in Controls and
+invokes operation 21 with the plugin-local ID, current bound key, and timestamp
+for every press. `client.Context.OpenScreen` accepts an ordered
 scene of anchored text, rectangles, hitboxes and native input widgets, then
 reports interactions through operation 14. `client.Context.CaptureScreen`
 does not return synchronously: the runtime coalesces pending requests, captures

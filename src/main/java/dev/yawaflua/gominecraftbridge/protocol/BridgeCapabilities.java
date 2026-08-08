@@ -35,6 +35,7 @@ public final class BridgeCapabilities {
 	private static final List<String> CLIENT = List.of(
 			"gbm:action_results",
 			"minecraft:event.client_tick",
+			"minecraft:event.client_key",
 			"minecraft:event.interaction",
 			"minecraft:client.chat.display",
 			"minecraft:client.hud",

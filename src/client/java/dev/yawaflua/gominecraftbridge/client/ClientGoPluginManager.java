@@ -13,6 +13,7 @@ import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
 import dev.yawaflua.gominecraftbridge.protocol.BridgeCapabilities;
+import dev.yawaflua.gominecraftbridge.protocol.ClientKeyEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ConfigUpdateEvent;
 import dev.yawaflua.gominecraftbridge.protocol.DeinitEvent;
@@ -45,6 +46,7 @@ public final class ClientGoPluginManager {
 	private final ClientHudState hud = new ClientHudState();
 	private final ClientScreenController screens;
 	private final ClientScreenCaptureController captures;
+	private final ClientKeyBindingController keyBindings;
 	private final ClientPluginResponseHandler responses;
 	private long tick;
 	private boolean running;
@@ -61,6 +63,7 @@ public final class ClientGoPluginManager {
 				this::handleScreenCapture,
 				this::handleCaptureWarning
 		);
+		this.keyBindings = new ClientKeyBindingController(this::handleKeyEvent);
 		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures);
 		this.registry = new NativePluginRegistry(new NativePackageScanner(List.of(
 				new NativePackageScanner.SearchRoot(this.legacyPluginDirectory, true),
@@ -118,6 +121,7 @@ public final class ClientGoPluginManager {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TICK, createTick(client), client);
 		}
+		this.keyBindings.tick();
 		this.captures.tick(client);
 	}
 
@@ -258,6 +262,7 @@ public final class ClientGoPluginManager {
 				this.responses.bridgeLog(plugin, "error", "Client initialization failed: " + response.error());
 				return false;
 			}
+			this.keyBindings.register(plugin);
 			plugin.markRunning();
 			this.responses.bridgeLog(plugin, "info", "Client plugin started");
 			return true;
@@ -311,6 +316,12 @@ public final class ClientGoPluginManager {
 	private synchronized void handleScreenEvent(LoadedPlugin plugin, ClientScreenEvent event) {
 		if (plugin.state() == PluginState.RUNNING) {
 			this.responses.invoke(plugin, Protocol.Operation.CLIENT_SCREEN_EVENT, event, Minecraft.getInstance());
+		}
+	}
+
+	private synchronized void handleKeyEvent(LoadedPlugin plugin, ClientKeyEvent event) {
+		if (plugin.state() == PluginState.RUNNING) {
+			this.responses.invoke(plugin, Protocol.Operation.CLIENT_KEY, event, Minecraft.getInstance());
 		}
 	}
 

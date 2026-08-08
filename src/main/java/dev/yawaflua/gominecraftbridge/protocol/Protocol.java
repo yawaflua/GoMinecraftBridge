@@ -40,7 +40,9 @@ public final class Protocol {
 		/** Reports that a player disconnected from the server. */
 		PLAYER_DISCONNECT(19),
 		/** Lets a server plugin allow or deny a player chat message. */
-		ALLOW_CHAT(20);
+		ALLOW_CHAT(20),
+		/** Reports a registered client key binding press. */
+		CLIENT_KEY(21);
 
 		private final int code;
 

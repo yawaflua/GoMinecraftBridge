@@ -1,15 +1,10 @@
 package dev.yawaflua.gominecraftbridge.client.runtime;
 
 import com.google.gson.JsonObject;
-import com.terraformersmc.modmenu.api.UpdateChannel;
 import dev.yawaflua.gominecraftbridge.catalog.CatalogSettings;
-import dev.yawaflua.gominecraftbridge.catalog.CatalogUpdate;
 import dev.yawaflua.gominecraftbridge.catalog.GbmCatalogService;
-import dev.yawaflua.gominecraftbridge.catalog.InstalledCatalogPackage;
 import dev.yawaflua.gominecraftbridge.client.ClientGoPluginManager;
 import dev.yawaflua.gominecraftbridge.client.ClientHudState;
-import dev.yawaflua.gominecraftbridge.client.GbmModMenuAdapter;
-import dev.yawaflua.gominecraftbridge.client.NativePluginUpdateInfo;
 import dev.yawaflua.gominecraftbridge.client.catalog.CatalogTaskController;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
@@ -29,7 +24,7 @@ import java.util.Set;
 /** Coordinates the local GBM client runtime without owning Fabric registration. */
 public final class GbmClientRuntime implements AutoCloseable {
 	private final ClientGoPluginManager plugins;
-	private final GbmModMenuAdapter modMenu = new GbmModMenuAdapter();
+	private final Object modMenu;
 	private final CatalogTaskController catalogTasks;
 	private final Set<String> catalogUpdateCheckers = new HashSet<>();
 	private Runnable updateListener;
@@ -37,6 +32,17 @@ public final class GbmClientRuntime implements AutoCloseable {
 	public GbmClientRuntime() {
 		Logger clientLogger = LoggerFactory.getLogger("gbm/client");
 		this.plugins = new ClientGoPluginManager(clientLogger);
+		if (FabricLoader.getInstance().isModLoaded("modmenu")) {
+			try {
+				this.modMenu = Class.forName("dev.yawaflua.gominecraftbridge.client.GbmModMenuAdapter")
+						.getConstructor()
+						.newInstance();
+			} catch (Exception e) {
+				throw new RuntimeException("Failed to initialize ModMenu adapter", e);
+			}
+		} else {
+			this.modMenu = null;
+		}
 		this.catalogTasks = new CatalogTaskController(
 				FabricLoader.getInstance().getConfigDir(),
 				LoggerFactory.getLogger("gbm/catalog"),
@@ -112,7 +118,7 @@ public final class GbmClientRuntime implements AutoCloseable {
 		return this.catalogTasks;
 	}
 
-	public GbmModMenuAdapter modMenu() {
+	public Object modMenu() {
 		return this.modMenu;
 	}
 
@@ -125,7 +131,15 @@ public final class GbmClientRuntime implements AutoCloseable {
 	}
 
 	public void refreshModMenu() {
-		this.modMenu.synchronize(localPlugins().plugins());
+		if (this.modMenu != null) {
+			try {
+				Class.forName("dev.yawaflua.gominecraftbridge.client.runtime.ModMenuCompat")
+						.getMethod("synchronize", Object.class, List.class)
+						.invoke(null, this.modMenu, localPlugins().plugins());
+			} catch (Exception e) {
+				LoggerFactory.getLogger("gbm/client").warn("Failed to synchronize ModMenu", e);
+			}
+		}
 	}
 
 	private void rescanCatalogPackages() {
@@ -151,33 +165,13 @@ public final class GbmClientRuntime implements AutoCloseable {
 	}
 
 	private void synchronizeUpdateCheckers(GbmCatalogService catalog) {
-		synchronized (this.catalogUpdateCheckers) {
-			for (String pluginId : Set.copyOf(this.catalogUpdateCheckers)) {
-				this.modMenu.unregisterUpdateChecker(pluginId);
-			}
-			this.catalogUpdateCheckers.clear();
-			if (!catalog.settings().automaticUpdates()) {
-				return;
-			}
-			for (InstalledCatalogPackage installed : catalog.installedPackages()) {
-				if (installed.pluginId().isBlank()) {
-					continue;
-				}
-				this.modMenu.registerUpdateChecker(installed.pluginId(), () -> {
-					try {
-						CatalogUpdate update = catalog.checkForUpdate(installed.projectId());
-						if (update == null || !update.updateAvailable()) {
-							return null;
-						}
-						return new NativePluginUpdateInfo(
-								catalog.downloadUrl(installed, update.latestVersion()),
-								UpdateChannel.RELEASE
-						);
-					} catch (IOException | RuntimeException exception) {
-						return null;
-					}
-				});
-				this.catalogUpdateCheckers.add(installed.pluginId());
+		if (this.modMenu != null) {
+			try {
+				Class.forName("dev.yawaflua.gominecraftbridge.client.runtime.ModMenuCompat")
+						.getMethod("synchronizeUpdateCheckers", Object.class, GbmCatalogService.class, Set.class)
+						.invoke(null, this.modMenu, catalog, this.catalogUpdateCheckers);
+			} catch (Exception e) {
+				LoggerFactory.getLogger("gbm/client").warn("Failed to synchronize ModMenu update checkers", e);
 			}
 		}
 	}

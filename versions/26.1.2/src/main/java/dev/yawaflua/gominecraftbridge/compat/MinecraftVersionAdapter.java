@@ -1,6 +1,6 @@
 package dev.yawaflua.gominecraftbridge.compat;
 
-import net.minecraft.SharedConstants;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -13,7 +13,12 @@ public final class MinecraftVersionAdapter {
 	}
 
 	public static String gameVersion() {
-		return SharedConstants.getCurrentVersion().name();
+		return FabricLoader.getInstance()
+				.getModContainer("minecraft")
+				.orElseThrow(() -> new IllegalStateException("Minecraft mod container is unavailable"))
+				.getMetadata()
+				.getVersion()
+				.getFriendlyString();
 	}
 
 	public static String dimension(Level level) {

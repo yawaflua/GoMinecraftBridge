@@ -18,6 +18,11 @@ type ClientTickHandler interface {
 	ClientTick(context *Context, event ClientTickEvent) error
 }
 
+// ClientKeyHandler receives presses from Metadata.ClientKeyBindings.
+type ClientKeyHandler interface {
+	ClientKey(context *Context, event ClientKeyEvent) error
+}
+
 // ClientScreenEventHandler receives interactions from a screen opened by the
 // plugin. It is invoked only by a client native runtime.
 type ClientScreenEventHandler interface {

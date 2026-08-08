@@ -52,6 +52,9 @@ func metadata() sdk.Metadata {
 		Authors:      []string{"yawaflua"},
 		License:      "MIT",
 		ConfigSchema: config,
+		ClientKeyBindings: []sdk.ClientKeyBinding{
+			{ID: "example", Name: "Hello from Go", DefaultKey: "key.keyboard.p"},
+		},
 	}
 }
 
@@ -152,6 +155,13 @@ func (plugin *clientPlugin) Tick(context *client.Context, event sdk.ClientTickEv
 	case 320:
 		// Repeat the complete draw/update/remove demonstration.
 		plugin.hudDemoTick = 0
+	}
+	return nil
+}
+
+func (clientPlugin) KeyPressed(context *client.Context, event sdk.ClientKeyEvent) error {
+	if event.ID == "example" {
+		context.DisplayMessage("P pressed in Hello Native")
 	}
 	return nil
 }

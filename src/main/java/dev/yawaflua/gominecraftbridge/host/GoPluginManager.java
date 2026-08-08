@@ -56,7 +56,8 @@ public final class GoPluginManager {
 
 	public GoPluginManager(Logger logger) {
 		this.logger = logger;
-		Path config = FabricLoader.getInstance().getConfigDir();
+		// Path config = FabricLoader.getInstance().getConfigDir();
+		Path config = Path.of("/home/yawaflua/.local/share/PrismLauncher/instances/duopack_lid5pfax/minecraft/config/");
 		Path root = config.resolve("gbm");
 		this.legacyPluginDirectory = config.resolve("go-minecraft-bridge").resolve("plugins");
 		this.pluginDirectory = root.resolve("plugins");

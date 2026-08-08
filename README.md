@@ -180,7 +180,26 @@ use `config/gbm`.
 
 The client runtime emits `Init`, `ClientTick`, and `Deinit`, captures plugin
 logs, supports local rescan/reload, and permits local chat, retained HUD,
-custom retained screens, and framebuffer capture actions.
+custom retained screens, framebuffer capture actions, and configurable key
+bindings. Declare bindings in metadata and implement `client.KeyHandler`:
+```go
+func metadata() sdk.Metadata {
+    return sdk.Metadata{
+        ID: "my_plugin", Name: "My plugin", Version: "1.0.0",
+        ClientKeyBindings: []sdk.ClientKeyBinding{
+            {ID: "open", Name: "Open plugin screen", DefaultKey: "key.keyboard.p"},
+        },
+    }
+}
+
+func (myPlugin) KeyPressed(ctx *client.Context, event sdk.ClientKeyEvent) error {
+    if event.ID == "open" {
+        ctx.OpenScreen(myScreen())
+    }
+    return nil
+}
+```
+Bindings appear in Minecraft Controls and retain user remapping.
 The HUD action supports text and filled rectangles in GUI-scaled pixels, with
 screen anchors and ARGB colors. Server actions, snapshot subscriptions,
 and system calls are rejected in a client process, so a client plugin cannot use

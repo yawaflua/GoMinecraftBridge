@@ -7,7 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Thread-safe immutable snapshots consumed by the HUD render callback. */
 public final class ClientHudState {
 	private static final int MAX_ELEMENTS_PER_PLUGIN = 1_024;
 	private static final int MAX_TEXT_LENGTH = 2_048;

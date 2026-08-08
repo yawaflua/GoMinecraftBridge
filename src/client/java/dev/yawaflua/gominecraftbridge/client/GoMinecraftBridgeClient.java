@@ -7,7 +7,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 
-/** Fabric bootstrap. All GBM client behavior lives in {@link GbmClientRuntime}. */
 public final class GoMinecraftBridgeClient implements ClientModInitializer {
 	private static final GbmClientRuntime RUNTIME = new GbmClientRuntime();
 
@@ -17,11 +16,17 @@ public final class GoMinecraftBridgeClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
-		Minecraft client = Minecraft.getInstance();
-		RUNTIME.start(client);
-		ClientHudRendering.register(RUNTIME.hud());
-		GbmFabricInteractionAdapter.register(true, (event, player) -> RUNTIME.interaction(event));
-		ClientTickEvents.END_CLIENT_TICK.register(RUNTIME::tick);
-		ClientLifecycleEvents.CLIENT_STOPPING.register(RUNTIME::stop);
+		try {
+			Minecraft client = Minecraft.getInstance();
+			RUNTIME.start(client);
+			ClientHudRendering.register(RUNTIME.hud());
+			GbmFabricInteractionAdapter.register(true, (event, player) -> RUNTIME.interaction(event));
+			ClientTickEvents.END_CLIENT_TICK.register(RUNTIME::tick);
+			ClientLifecycleEvents.CLIENT_STOPPING.register(RUNTIME::stop);
+		} catch (Exception e) {
+		    System.err.println("Ima crushogolic..");
+			System.err.println(e);
+			throw e;
+		}
 	}
 }

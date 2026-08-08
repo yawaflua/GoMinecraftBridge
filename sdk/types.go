@@ -25,6 +25,7 @@ const (
 	OperationPlayerJoin          = 18
 	OperationPlayerDisconnect    = 19
 	OperationAllowChat           = 20
+	OperationClientKey           = 21
 )
 
 // PluginEnvironment declares which Minecraft process may execute a plugin.
@@ -49,9 +50,18 @@ type Metadata struct {
 	// A pointer to a JSON-serializable struct is updated in place when the user
 	// saves its Cloth Config screen. Maps containing a JSON Schema remain
 	// supported when the plugin implements ConfigUpdateHandler itself.
-	ConfigSchema   any               `json:"configSchema,omitempty"`
-	ConfigWritable bool              `json:"configWritable,omitempty"`
-	Environment    PluginEnvironment `json:"environment"`
+	ConfigSchema      any                `json:"configSchema,omitempty"`
+	ConfigWritable    bool               `json:"configWritable,omitempty"`
+	Environment       PluginEnvironment  `json:"environment"`
+	ClientKeyBindings []ClientKeyBinding `json:"clientKeyBindings,omitempty"`
+}
+
+// ClientKeyBinding declares a configurable Minecraft key binding owned by a
+// client plugin. DefaultKey uses Minecraft input names such as "key.keyboard.p".
+type ClientKeyBinding struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	DefaultKey string `json:"defaultKey"`
 }
 
 type InitEvent struct {
@@ -79,6 +89,7 @@ const (
 	CapabilityActionResults         Capability = "gbm:action_results"
 	CapabilityServerTick            Capability = "minecraft:event.server_tick"
 	CapabilityClientTick            Capability = "minecraft:event.client_tick"
+	CapabilityClientKey             Capability = "minecraft:event.client_key"
 	CapabilityChatEvent             Capability = "minecraft:event.chat"
 	CapabilityAllowChat             Capability = "minecraft:event.chat.allow"
 	CapabilityPlayerJoinEvent       Capability = "minecraft:event.player_join"
@@ -107,6 +118,14 @@ type ClientTickEvent struct {
 	PlayerUUID         string `json:"playerUuid,omitempty"`
 	PlayerName         string `json:"playerName,omitempty"`
 	Dimension          string `json:"dimension,omitempty"`
+}
+
+// ClientKeyEvent reports one press of a key binding declared in Metadata.
+type ClientKeyEvent struct {
+	ID                 string            `json:"id"`
+	Key                string            `json:"key"`
+	TimestampUnixMilli int64             `json:"timestampUnixMilli"`
+	RuntimeEnvironment PluginEnvironment `json:"runtimeEnvironment,omitempty"`
 }
 
 type ServerSnapshot struct {

@@ -13,6 +13,7 @@ type testPlugin struct{}
 type clientFeatureTestPlugin struct {
 	capture     ClientScreenCapture
 	event       ClientScreenEvent
+	key         ClientKeyEvent
 	interaction InteractionEvent
 	action      ActionResult
 }
@@ -44,6 +45,10 @@ func (plugin *clientFeatureTestPlugin) ClientScreenCaptured(_ *Context, capture 
 
 func (plugin *clientFeatureTestPlugin) ClientScreenEvent(_ *Context, event ClientScreenEvent) error {
 	plugin.event = event
+	return nil
+}
+func (plugin *clientFeatureTestPlugin) ClientKey(_ *Context, event ClientKeyEvent) error {
+	plugin.key = event
 	return nil
 }
 
@@ -371,6 +376,20 @@ func TestDispatchClientScreenEventAndCapture(t *testing.T) {
 	Dispatch(OperationClientScreenCapture, frame)
 	if plugin.capture.Width != 2 || plugin.capture.Height != 1 || !jsonBytesEqual(plugin.capture.Pixels, pixels) {
 		t.Fatalf("screen capture was not dispatched: %#v", plugin.capture)
+	}
+}
+func TestDispatchClientKey(t *testing.T) {
+	plugin := &clientFeatureTestPlugin{}
+	pluginMu.Lock()
+	registeredPlugin = plugin
+	pluginMu.Unlock()
+	input := []byte(`{"id":"open","key":"key.keyboard.p","timestampUnixMilli":42}`)
+	var got response
+	if err := json.Unmarshal(Dispatch(OperationClientKey, input), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "ok" || plugin.key.ID != "open" || plugin.key.Key != "key.keyboard.p" || plugin.key.TimestampUnixMilli != 42 {
+		t.Fatalf("client key was not dispatched: response=%#v event=%#v", got, plugin.key)
 	}
 }
 

@@ -72,6 +72,13 @@ func (adapter *adapter) ClientTick(context *sdk.Context, event sdk.ClientTickEve
 	return nil
 }
 
+func (adapter *adapter) ClientKey(context *sdk.Context, event sdk.ClientKeyEvent) error {
+	if handler, ok := adapter.client.(sdk.ClientKeyHandler); ok {
+		return handler.ClientKey(context, event)
+	}
+	return nil
+}
+
 func (adapter *adapter) ConfigUpdated(context *sdk.Context, event sdk.ConfigUpdateEvent) error {
 	if handler, ok := adapter.side(context).(sdk.ConfigUpdateHandler); ok {
 		return handler.ConfigUpdated(context, event)
