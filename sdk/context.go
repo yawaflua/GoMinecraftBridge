@@ -13,75 +13,115 @@ type Context struct {
 	systemCalls []SystemCallRequest
 	logs        []LogEntry
 	snapshot    *SnapshotSubscription
+	client      bool
 }
 
-// Broadcast queues a message to be sent to all players.
-func (context *Context) Broadcast(message string) {
-	context.actions = append(context.actions, ActionRequest{
-		Type: "minecraft:chat.broadcast",
-		Payload: map[string]any{
-			"message": message,
-		},
+// RuntimeEnvironment reports which host is executing the current callback.
+func (context *Context) RuntimeEnvironment() PluginEnvironment {
+	if context.client {
+		return PluginEnvironmentClient
+	}
+	return PluginEnvironmentServer
+}
+
+// Broadcast queues a message for all players and returns its action ID.
+func (context *Context) Broadcast(message string) string {
+	if context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:chat.broadcast", map[string]any{
+		"message": message,
 	})
 }
 
-// SendMessage queues a message to be sent to a player.
-func (context *Context) SendMessage(playerUUID, message string) {
-	context.actions = append(context.actions, ActionRequest{
-		Type: "minecraft:chat.player",
-		Payload: map[string]any{
-			"playerUuid": playerUUID,
-			"message":    message,
-		},
+// SendMessage queues a player message and returns its action ID.
+func (context *Context) SendMessage(playerUUID, message string) string {
+	if context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:chat.player", map[string]any{
+		"playerUuid": playerUUID,
+		"message":    message,
 	})
 }
 
-// DisplayClientMessage appends a local-only message to the Minecraft client
-// chat. Client runtimes reject server action types such as SendMessage.
-func (context *Context) DisplayClientMessage(message string) {
-	context.actions = append(context.actions, ActionRequest{
-		Type: "minecraft:client.chat.display",
-		Payload: map[string]any{
-			"message": message,
-		},
+// DisplayClientMessage queues a local chat message and returns its action ID.
+func (context *Context) DisplayClientMessage(message string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.chat.display", map[string]any{
+		"message": message,
 	})
 }
 
-// SetHUD replaces all HUD elements retained for this client plugin. Elements
-// remain visible until the next SetHUD/ClearHUD call or until the plugin stops.
-func (context *Context) SetHUD(elements ...HUDElement) {
-	context.actions = append(context.actions, ActionRequest{
-		Type: "minecraft:client.hud.set",
-		Payload: map[string]any{
-			"elements": append([]HUDElement(nil), elements...),
-		},
+// OpenClientScreen opens or updates a client-local Minecraft form and returns
+// its action ID. It returns an empty string in a server runtime.
+func (context *Context) OpenClientScreen(screen ClientScreen) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.screen.open", screen)
+}
+
+// CloseClientScreen closes screenID if it belongs to this plugin and returns
+// its action ID. It returns an empty string in a server runtime.
+func (context *Context) CloseClientScreen(screenID string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.screen.close", map[string]any{"id": screenID})
+}
+
+// CaptureClientScreen queues a framebuffer capture and returns its action ID.
+// Pixels arrive later through ClientScreenCaptureHandler. It returns an empty
+// string in a server runtime.
+func (context *Context) CaptureClientScreen() string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.screen.capture", map[string]any{})
+}
+
+// SetHUD replaces the retained client HUD and returns its action ID.
+func (context *Context) SetHUD(elements ...HUDElement) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.hud.set", map[string]any{
+		"elements": append([]HUDElement(nil), elements...),
 	})
 }
 
 // ClearHUD removes every HUD element retained for this client plugin.
-func (context *Context) ClearHUD() {
-	context.SetHUD()
+func (context *Context) ClearHUD() string {
+	return context.SetHUD()
 }
 
-// RenderHUD creates or updates one retained HUD element. The element must have
-// an ID, for example HUDText(...).Named("status").
-func (context *Context) RenderHUD(element HUDElement) {
-	context.actions = append(context.actions, ActionRequest{
-		Type: "minecraft:client.hud.upsert",
-		Payload: map[string]any{
-			"element": element,
-		},
+// RenderHUD creates or updates one retained HUD element and returns its action ID.
+func (context *Context) RenderHUD(element HUDElement) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.hud.upsert", map[string]any{
+		"element": element,
 	})
 }
 
-// RemoveHUD removes one retained element by its plugin-local ID.
-func (context *Context) RemoveHUD(id string) {
-	context.actions = append(context.actions, ActionRequest{
-		Type: "minecraft:client.hud.remove",
-		Payload: map[string]any{
-			"id": id,
-		},
+// RemoveHUD removes one retained element and returns its action ID.
+func (context *Context) RemoveHUD(id string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.hud.remove", map[string]any{
+		"id": id,
 	})
+}
+
+func (context *Context) queueAction(actionType string, payload any) string {
+	id := fmt.Sprintf("action-%d", callSequence.Add(1))
+	context.actions = append(context.actions, ActionRequest{ID: id, Type: actionType, Payload: payload})
+	return id
 }
 
 // Named returns a copy with the ID used by RenderHUD and RemoveHUD.
@@ -121,12 +161,40 @@ func HUDRectangle(x, y, width, height int, color uint32, anchor HUDAnchor) HUDEl
 
 // SystemCall queues one of the system calls built into the bridge.
 func (context *Context) SystemCall(callType SystemCallType, payload any) string {
+	if context.client {
+		return ""
+	}
 	return context.queueSystemCall(string(callType), payload)
 }
 
 // CustomSystemCall queues a system call registered by another mod.
 func (context *Context) CustomSystemCall(name string, payload any) string {
+	if context.client {
+		return ""
+	}
 	return context.queueSystemCall(name, payload)
+}
+
+// GetServerInfo requests common server state and returns its request ID.
+func (context *Context) GetServerInfo() string {
+	return context.SystemCall(SystemCallServerInfo, struct{}{})
+}
+
+// GetPlayer requests an online player by UUID and returns its request ID.
+func (context *Context) GetPlayer(playerUUID string) string {
+	return context.SystemCall(SystemCallPlayerGet, PlayerGetRequest{PlayerUUID: playerUUID})
+}
+
+// GetBlock requests a loaded block and returns its request ID.
+func (context *Context) GetBlock(block BlockReference) string {
+	return context.SystemCall(SystemCallBlockGet, block)
+}
+
+// GetEntity requests an entity by UUID or runtime ID and returns its request ID.
+// The EntitySnapshot is delivered to SystemCallResultHandler and can be decoded
+// with DecodeSystemCallResult[EntitySnapshot].
+func (context *Context) GetEntity(entity GetEntityRequest) string {
+	return context.SystemCall(SystemCallGetEntity, entity)
 }
 
 // queueSystemCall queues a system call to be executed by the bridge.
@@ -142,6 +210,9 @@ func (context *Context) queueSystemCall(name string, payload any) string {
 
 // SubscribeSnapshot queues a snapshot subscription to be executed by the bridge.
 func (context *Context) SubscribeSnapshot(entities bool, blocks ...BlockReference) {
+	if context.client {
+		return
+	}
 	context.snapshot = &SnapshotSubscription{
 		Entities: entities,
 		Blocks:   append([]BlockReference(nil), blocks...),
@@ -158,12 +229,8 @@ func (context *Context) Log(level, message string) {
 	})
 }
 
-func (context *Context) Kill(entityId string) {
-	context.actions = append(context.actions, ActionRequest{
-		Type: "minecraft:server.kill",
-		Payload: map[string]any{
-			"entityId": entityId,
-		},
-	})
-
+// Kill queues the built-in entity kill call and returns its request ID.
+// The result is delivered to SystemCallResultHandler. Client runtimes reject it.
+func (context *Context) Kill(entityUUID string) string {
+	return context.SystemCall(SystemCallKillEntity, GetEntityRequest{UUID: entityUUID})
 }

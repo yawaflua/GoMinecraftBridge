@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,8 +15,8 @@ var (
 	registeredPlugin Plugin
 )
 
-// Register registers a plugin with the server.
-func Register(plugin Plugin) {
+// RegisterRuntime installs the low-level plugin adapter used by the side-specific SDK packages.
+func RegisterRuntime(plugin Plugin) {
 	if plugin == nil {
 		panic("sdk: cannot register a nil plugin")
 	}
@@ -31,7 +32,7 @@ func Register(plugin Plugin) {
 
 // Dispatch dispatches a plugin operation to the registered plugin.
 func Dispatch(operation int, input []byte) (output []byte) {
-	context := &Context{}
+	context := &Context{client: dispatchRunsOnClient(operation, input)}
 	result := response{Status: "ok"}
 
 	defer func() {
@@ -63,9 +64,15 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		metadata := plugin.Metadata()
 		if metadata.APIVersion == 0 {
 			metadata.APIVersion = ABIVersion
+		} else if metadata.APIVersion != ABIVersion {
+			err = fmt.Errorf("sdk: api version must be %d", ABIVersion)
+			break
 		}
-		if metadata.Environment == "" {
-			metadata.Environment = PluginEnvironmentServer
+		if metadata.Environment != PluginEnvironmentServer &&
+			metadata.Environment != PluginEnvironmentClient &&
+			metadata.Environment != PluginEnvironmentBoth {
+			err = errors.New("sdk: plugin environment must be server, client, or both")
+			break
 		}
 		metadata.ConfigWritable = configWritable(plugin, metadata.ConfigSchema)
 		result.Data = metadata
@@ -73,6 +80,7 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		var event InitEvent
 		err = decode(input, &event)
 		if err == nil {
+			context.client = event.RuntimeEnvironment == PluginEnvironmentClient
 			if handler, ok := plugin.(Initializer); ok {
 				err = handler.Init(context, event)
 			}
@@ -134,6 +142,9 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		if err == nil {
 			metadata := plugin.Metadata()
 			handler, handlesUpdate := plugin.(ConfigUpdateHandler)
+			if support, ok := plugin.(ConfigUpdateSupport); ok {
+				handlesUpdate = support.HandlesConfigUpdates(context.RuntimeEnvironment())
+			}
 			previous, _ := json.Marshal(metadata.ConfigSchema)
 			updateErr := updateConfigTarget(metadata.ConfigSchema, event.Config)
 			automaticallyUpdated := updateErr == nil
@@ -198,6 +209,66 @@ func Dispatch(operation int, input []byte) (output []byte) {
 				err = handler.MobConversion(context, event)
 			}
 		}
+	case OperationClientScreenEvent:
+		var event ClientScreenEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(ClientScreenEventHandler); ok {
+				err = handler.ClientScreenEvent(context, event)
+			}
+		}
+	case OperationClientScreenCapture:
+		var capture ClientScreenCapture
+		capture, err = decodeClientScreenCapture(input)
+		if err == nil {
+			if handler, ok := plugin.(ClientScreenCaptureHandler); ok {
+				err = handler.ClientScreenCaptured(context, capture)
+			}
+		}
+	case OperationInteraction:
+		var event InteractionEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(InteractionHandler); ok {
+				err = handler.Interaction(context, event)
+			}
+		}
+	case OperationActionResult:
+		var event ActionResult
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(ActionResultHandler); ok {
+				err = handler.ActionResult(context, event)
+			}
+		}
+	case OperationPlayerJoin:
+		var event PlayerConnectionEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(PlayerJoinHandler); ok {
+				err = handler.PlayerJoin(context, event)
+			}
+		}
+	case OperationPlayerDisconnect:
+		var event PlayerConnectionEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(PlayerDisconnectHandler); ok {
+				err = handler.PlayerDisconnect(context, event)
+			}
+		}
+	case OperationAllowChat:
+		var event ChatEvent
+		err = decode(input, &event)
+		if err == nil {
+			allowed := true
+			if handler, ok := plugin.(AllowChatHandler); ok {
+				allowed, err = handler.AllowChat(context, event)
+			}
+			if err == nil {
+				result.Data = allowed
+			}
+		}
 	default:
 		err = fmt.Errorf("sdk: unknown operation %d", operation)
 	}
@@ -207,6 +278,46 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		result.Error = err.Error()
 	}
 	return nil
+}
+
+func dispatchRunsOnClient(operation int, input []byte) bool {
+	if operation == OperationClientTick || operation == OperationClientScreenEvent || operation == OperationClientScreenCapture {
+		return true
+	}
+	var scope struct {
+		RuntimeEnvironment PluginEnvironment `json:"runtimeEnvironment"`
+	}
+	return json.Unmarshal(input, &scope) == nil && scope.RuntimeEnvironment == PluginEnvironmentClient
+}
+
+const (
+	clientCaptureHeaderSize = 24
+	clientCaptureMaxPixels  = 16_000_000
+	clientCaptureMaxBytes   = 64 * 1024 * 1024
+)
+
+func decodeClientScreenCapture(input []byte) (ClientScreenCapture, error) {
+	if len(input) < clientCaptureHeaderSize || string(input[:4]) != "GMBC" {
+		return ClientScreenCapture{}, errors.New("sdk: invalid client screen capture header")
+	}
+	if input[4] != 1 || input[5] != 1 {
+		return ClientScreenCapture{}, errors.New("sdk: unsupported client screen capture format")
+	}
+	width := uint64(binary.LittleEndian.Uint32(input[8:12]))
+	height := uint64(binary.LittleEndian.Uint32(input[12:16]))
+	stride := uint64(binary.LittleEndian.Uint32(input[16:20]))
+	payloadLength := uint64(binary.LittleEndian.Uint32(input[20:24]))
+	if width == 0 || height == 0 || width*height > clientCaptureMaxPixels || stride != width*4 {
+		return ClientScreenCapture{}, errors.New("sdk: invalid client screen capture dimensions")
+	}
+	expected := stride * height
+	if expected != payloadLength || payloadLength > clientCaptureMaxBytes || payloadLength != uint64(len(input)-clientCaptureHeaderSize) {
+		return ClientScreenCapture{}, errors.New("sdk: invalid client screen capture payload length")
+	}
+	return ClientScreenCapture{
+		Width: int(width), Height: int(height), Stride: int(stride),
+		Format: ClientPixelFormatRGBA8, Pixels: input[clientCaptureHeaderSize:],
+	}, nil
 }
 
 func updateConfigTarget(target any, config json.RawMessage) error {
@@ -220,7 +331,12 @@ func updateConfigTarget(target any, config json.RawMessage) error {
 }
 
 func configWritable(plugin Plugin, target any) bool {
-	if _, ok := plugin.(ConfigUpdateHandler); ok {
+	if support, ok := plugin.(ConfigUpdateSupport); ok {
+		if support.HandlesConfigUpdates(PluginEnvironmentServer) ||
+			support.HandlesConfigUpdates(PluginEnvironmentClient) {
+			return target != nil
+		}
+	} else if _, ok := plugin.(ConfigUpdateHandler); ok {
 		return target != nil
 	}
 	if target == nil {
@@ -234,7 +350,7 @@ func currentPlugin() Plugin {
 	pluginMu.RLock()
 	defer pluginMu.RUnlock()
 	if registeredPlugin == nil {
-		panic("sdk: plugin was not registered; call sdk.Register from init")
+		panic("sdk: plugin was not registered; call server.Register, client.Register, or dual.Register from init")
 	}
 	return registeredPlugin
 }

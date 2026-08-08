@@ -18,6 +18,18 @@ type ClientTickHandler interface {
 	ClientTick(context *Context, event ClientTickEvent) error
 }
 
+// ClientScreenEventHandler receives interactions from a screen opened by the
+// plugin. It is invoked only by a client native runtime.
+type ClientScreenEventHandler interface {
+	ClientScreenEvent(context *Context, event ClientScreenEvent) error
+}
+
+// ClientScreenCaptureHandler receives framebuffer bytes requested with
+// Context.CaptureClientScreen. Pixels is valid only during this callback.
+type ClientScreenCaptureHandler interface {
+	ClientScreenCaptured(context *Context, capture ClientScreenCapture) error
+}
+
 // ConfigUpdateHandler runs after the SDK has updated a pointer stored in
 // Metadata.ConfigSchema. It is optional for pointer-backed configurations and
 // required when ConfigSchema is a schema/map rather than an updateable pointer.
@@ -25,8 +37,31 @@ type ConfigUpdateHandler interface {
 	ConfigUpdated(context *Context, event ConfigUpdateEvent) error
 }
 
+// ConfigUpdateSupport lets a side-specific adapter preserve optional handler semantics.
+type ConfigUpdateSupport interface {
+	HandlesConfigUpdates(environment PluginEnvironment) bool
+}
+
 type ChatHandler interface {
 	Chat(context *Context, event ChatEvent) error
+}
+
+type AllowChatHandler interface {
+	AllowChat(context *Context, event ChatEvent) (bool, error)
+}
+
+type PlayerJoinHandler interface {
+	PlayerJoin(context *Context, event PlayerConnectionEvent) error
+}
+
+type PlayerDisconnectHandler interface {
+	PlayerDisconnect(context *Context, event PlayerConnectionEvent) error
+}
+
+// InteractionHandler observes left and right clicks on blocks and entities.
+// Returning an error is logged but does not cancel the Minecraft interaction.
+type InteractionHandler interface {
+	Interaction(context *Context, event InteractionEvent) error
 }
 
 type DeathHandler interface {
@@ -51,6 +86,11 @@ type MobConversionHandler interface {
 
 type SystemCallResultHandler interface {
 	SystemCallResult(context *Context, result SystemCallResult) error
+}
+
+// ActionResultHandler receives acknowledgements for actions queued by Context.
+type ActionResultHandler interface {
+	ActionResult(context *Context, result ActionResult) error
 }
 
 type Deinitializer interface {

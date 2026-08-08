@@ -2,22 +2,29 @@ package sdk
 
 import "encoding/json"
 
-const ABIVersion = 2
+const ABIVersion = 3
 
 const (
-	OperationMetadata         = 1
-	OperationInit             = 2
-	OperationTick             = 3
-	OperationChat             = 4
-	OperationDeath            = 5
-	OperationSystemCallResult = 6
-	OperationDeinit           = 7
-	OperationClientTick       = 8
-	OperationConfigUpdate     = 9
-	OperationAllowDamage      = 10
-	OperationAfterDamage      = 11
-	OperationAllowDeath       = 12
-	OperationMobConversion    = 13
+	OperationMetadata            = 1
+	OperationInit                = 2
+	OperationTick                = 3
+	OperationChat                = 4
+	OperationDeath               = 5
+	OperationSystemCallResult    = 6
+	OperationDeinit              = 7
+	OperationClientTick          = 8
+	OperationConfigUpdate        = 9
+	OperationAllowDamage         = 10
+	OperationAfterDamage         = 11
+	OperationAllowDeath          = 12
+	OperationMobConversion       = 13
+	OperationClientScreenEvent   = 14
+	OperationClientScreenCapture = 15
+	OperationInteraction         = 16
+	OperationActionResult        = 17
+	OperationPlayerJoin          = 18
+	OperationPlayerDisconnect    = 19
+	OperationAllowChat           = 20
 )
 
 // PluginEnvironment declares which Minecraft process may execute a plugin.
@@ -52,7 +59,43 @@ type InitEvent struct {
 	Dedicated          bool              `json:"dedicated"`
 	DataDirectory      string            `json:"dataDirectory"`
 	RuntimeEnvironment PluginEnvironment `json:"runtimeEnvironment"`
+	Capabilities       []Capability      `json:"capabilities,omitempty"`
 }
+
+// Supports reports whether the current host declared a capability during Init.
+func (event InitEvent) Supports(capability Capability) bool {
+	for _, available := range event.Capabilities {
+		if available == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// Capability identifies an optional host event, action, or system call.
+type Capability string
+
+const (
+	CapabilityActionResults         Capability = "gbm:action_results"
+	CapabilityServerTick            Capability = "minecraft:event.server_tick"
+	CapabilityClientTick            Capability = "minecraft:event.client_tick"
+	CapabilityChatEvent             Capability = "minecraft:event.chat"
+	CapabilityAllowChat             Capability = "minecraft:event.chat.allow"
+	CapabilityPlayerJoinEvent       Capability = "minecraft:event.player_join"
+	CapabilityPlayerDisconnectEvent Capability = "minecraft:event.player_disconnect"
+	CapabilityDeathEvent            Capability = "minecraft:event.death"
+	CapabilityInteractionEvent      Capability = "minecraft:event.interaction"
+	CapabilityAllowDamage           Capability = "minecraft:event.damage.allow"
+	CapabilityAfterDamage           Capability = "minecraft:event.damage.after"
+	CapabilityAllowDeath            Capability = "minecraft:event.death.allow"
+	CapabilityMobConversion         Capability = "minecraft:event.mob_conversion"
+	CapabilityChatBroadcast         Capability = "minecraft:chat.broadcast"
+	CapabilityChatPlayer            Capability = "minecraft:chat.player"
+	CapabilityClientChat            Capability = "minecraft:client.chat.display"
+	CapabilityClientHUD             Capability = "minecraft:client.hud"
+	CapabilityClientScreen          Capability = "minecraft:client.screen"
+	CapabilityClientScreenCapture   Capability = "minecraft:client.screen.capture"
+)
 
 // ClientTickEvent contains client-local state. Pointer-like values are empty
 // when the client is at the title screen or is not connected to a world.
@@ -125,6 +168,37 @@ type ChatEvent struct {
 	TimestampUnixMilli int64  `json:"timestampUnixMilli"`
 }
 
+type PlayerConnectionEvent struct {
+	Player             EntitySnapshot `json:"player"`
+	TimestampUnixMilli int64          `json:"timestampUnixMilli"`
+}
+
+// InteractionAction identifies an observed world click.
+type InteractionAction string
+
+const (
+	InteractionUseBlock     InteractionAction = "use_block"
+	InteractionAttackBlock  InteractionAction = "attack_block"
+	InteractionUseEntity    InteractionAction = "use_entity"
+	InteractionAttackEntity InteractionAction = "attack_entity"
+)
+
+// InteractionEvent reports a player click without changing vanilla handling.
+// Block is set for block interactions and Target for entity interactions.
+type InteractionEvent struct {
+	Action             InteractionAction `json:"action"`
+	Hand               string            `json:"hand"`
+	Sneaking           bool              `json:"sneaking"`
+	Player             EntitySnapshot    `json:"player"`
+	Block              *BlockSnapshot    `json:"block,omitempty"`
+	Target             *EntitySnapshot   `json:"target,omitempty"`
+	Face               string            `json:"face,omitempty"`
+	HitX               *float64          `json:"hitX,omitempty"`
+	HitY               *float64          `json:"hitY,omitempty"`
+	HitZ               *float64          `json:"hitZ,omitempty"`
+	TimestampUnixMilli int64             `json:"timestampUnixMilli"`
+}
+
 type DeathEvent struct {
 	Entity             EntitySnapshot `json:"entity"`
 	DamageType         string         `json:"damageType"`
@@ -178,6 +252,33 @@ type SystemCallResult struct {
 	Error   string          `json:"error"`
 }
 
+type ServerInfo struct {
+	Tick             int64  `json:"tick"`
+	Dedicated        bool   `json:"dedicated"`
+	OnlinePlayers    int    `json:"onlinePlayers"`
+	MaxPlayers       int    `json:"maxPlayers,omitempty"`
+	MinecraftVersion string `json:"minecraftVersion,omitempty"`
+	Server           string `json:"server,omitempty"`
+}
+
+type PlayerGetRequest struct {
+	PlayerUUID string `json:"playerUuid"`
+}
+
+type PlayerInfo struct {
+	UUID      string  `json:"uuid"`
+	Name      string  `json:"name"`
+	Dimension string  `json:"dimension"`
+	X         float64 `json:"x"`
+	Y         float64 `json:"y"`
+	Z         float64 `json:"z"`
+}
+
+type BlockGetResult struct {
+	Loaded bool   `json:"loaded"`
+	Block  string `json:"block,omitempty"`
+}
+
 // SystemCallType identifies a system call provided by the bridge itself.
 // Use Context.CustomSystemCall for calls registered by another mod.
 type SystemCallType string
@@ -209,8 +310,124 @@ type ConfigUpdateEvent struct {
 }
 
 type ActionRequest struct {
+	ID      string `json:"id,omitempty"`
 	Type    string `json:"type"`
 	Payload any    `json:"payload"`
+}
+
+// ActionResult reports whether the host applied a queued action.
+type ActionResult struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+
+// ClientScreen describes a client-local Minecraft form. Text is rendered as
+// literal text. IDs are plugin-local and are returned with interaction events.
+type ClientScreen struct {
+	ID       string                `json:"id"`
+	Title    string                `json:"title"`
+	Body     string                `json:"body,omitempty"`
+	Elements []ClientScreenElement `json:"elements,omitempty"`
+	Fields   []ClientScreenField   `json:"fields,omitempty"`
+	Buttons  []ClientScreenButton  `json:"buttons,omitempty"`
+}
+
+// ClientScreenElementType selects a primitive in a freely positioned custom
+// screen. Elements are painted in slice order.
+type ClientScreenElementType string
+
+const (
+	ClientScreenElementText          ClientScreenElementType = "text"
+	ClientScreenElementRectangle     ClientScreenElementType = "rectangle"
+	ClientScreenElementButton        ClientScreenElementType = "button"
+	ClientScreenElementHitbox        ClientScreenElementType = "hitbox"
+	ClientScreenElementTextInput     ClientScreenElementType = "text_input"
+	ClientScreenElementNumberInput   ClientScreenElementType = "number_input"
+	ClientScreenElementPasswordInput ClientScreenElementType = "password_input"
+	ClientScreenElementSelect        ClientScreenElementType = "select"
+)
+
+// ClientScreenElement is an arbitrarily positioned custom-screen primitive.
+// Coordinates use GUI-scaled pixels relative to Anchor. A hitbox makes any
+// separately drawn composition clickable without adding a vanilla button.
+// Interactive elements return values under ID; Close restores the parent.
+type ClientScreenElement struct {
+	ID          string                  `json:"id"`
+	Type        ClientScreenElementType `json:"type"`
+	X           int                     `json:"x"`
+	Y           int                     `json:"y"`
+	Width       int                     `json:"width,omitempty"`
+	Height      int                     `json:"height,omitempty"`
+	Text        string                  `json:"text,omitempty"`
+	Placeholder string                  `json:"placeholder,omitempty"`
+	Value       string                  `json:"value,omitempty"`
+	MaxLength   int                     `json:"maxLength,omitempty"`
+	Options     []ClientScreenOption    `json:"options,omitempty"`
+	Color       uint32                  `json:"color,omitempty"`
+	Shadow      bool                    `json:"shadow,omitempty"`
+	Anchor      HUDAnchor               `json:"anchor,omitempty"`
+	Close       bool                    `json:"close,omitempty"`
+}
+
+// ClientScreenFieldType selects the widget used by a client screen field.
+type ClientScreenFieldType string
+
+const (
+	ClientScreenFieldText     ClientScreenFieldType = "text"
+	ClientScreenFieldNumber   ClientScreenFieldType = "number"
+	ClientScreenFieldPassword ClientScreenFieldType = "password"
+	ClientScreenFieldSelect   ClientScreenFieldType = "select"
+)
+
+// ClientScreenField is one editable value in a client screen.
+type ClientScreenField struct {
+	ID          string                `json:"id"`
+	Type        ClientScreenFieldType `json:"type"`
+	Label       string                `json:"label"`
+	Placeholder string                `json:"placeholder,omitempty"`
+	Value       string                `json:"value,omitempty"`
+	MaxLength   int                   `json:"maxLength,omitempty"`
+	Options     []ClientScreenOption  `json:"options,omitempty"`
+}
+
+// ClientScreenOption is one value offered by a select field.
+type ClientScreenOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// ClientScreenButton describes an action button. Close restores the parent
+// screen before the event is delivered, allowing the handler to open another.
+type ClientScreenButton struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Close bool   `json:"close,omitempty"`
+}
+
+// ClientScreenEvent reports a button press or screen closure to a Go plugin.
+type ClientScreenEvent struct {
+	ScreenID string            `json:"screenId"`
+	Type     string            `json:"type"`
+	ButtonID string            `json:"buttonId,omitempty"`
+	Reason   string            `json:"reason,omitempty"`
+	Values   map[string]string `json:"values,omitempty"`
+}
+
+// ClientPixelFormat identifies the byte layout of a captured framebuffer.
+type ClientPixelFormat string
+
+const ClientPixelFormatRGBA8 ClientPixelFormat = "rgba8"
+
+// ClientScreenCapture contains one full framebuffer. Pixels contains tightly
+// packed top-to-bottom RGBA8 rows and is valid for the duration of the callback.
+type ClientScreenCapture struct {
+	Width  int
+	Height int
+	Stride int
+	Format ClientPixelFormat
+	Pixels []byte
 }
 
 // HUDAnchor controls which screen point the element's X/Y offset is relative to.
