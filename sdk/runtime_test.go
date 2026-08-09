@@ -14,6 +14,7 @@ type clientFeatureTestPlugin struct {
 	capture     ClientScreenCapture
 	event       ClientScreenEvent
 	key         ClientKeyEvent
+	chat        ClientChatEvent
 	interaction InteractionEvent
 	action      ActionResult
 }
@@ -52,6 +53,11 @@ func (plugin *clientFeatureTestPlugin) ClientKey(_ *Context, event ClientKeyEven
 	return nil
 }
 
+func (plugin *clientFeatureTestPlugin) ClientChat(_ *Context, event ClientChatEvent) error {
+	plugin.chat = event
+	return nil
+}
+
 func (plugin *clientFeatureTestPlugin) Interaction(_ *Context, event InteractionEvent) error {
 	plugin.interaction = event
 	return nil
@@ -85,6 +91,7 @@ func (decisionTestPlugin) AllowChat(context *Context, event ChatEvent) (bool, er
 type testConfig struct {
 	Greeting string `json:"greeting"`
 	Enabled  bool   `json:"enabled"`
+	Mode     int    `json:"mode" gbm:"[0,1,2]"`
 }
 
 type configurableTestPlugin struct {
@@ -247,6 +254,25 @@ func TestMetadataMarksPointerConfigWritable(t *testing.T) {
 	}
 	if !got.Data.ConfigWritable {
 		t.Fatal("pointer-backed config was not marked writable")
+	}
+	if len(got.Data.ConfigEnums["mode"]) != 3 {
+		t.Fatalf("config enums were not serialized: %#v", got.Data.ConfigEnums)
+	}
+}
+
+func TestDispatchClientChat(t *testing.T) {
+	plugin := &clientFeatureTestPlugin{}
+	pluginMu.Lock()
+	registeredPlugin = plugin
+	pluginMu.Unlock()
+
+	input, _ := json.Marshal(ClientChatEvent{Message: "Open", ClickValues: []string{"https://example.com"}})
+	var got response
+	if err := json.Unmarshal(Dispatch(OperationClientChat, input), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != "ok" || plugin.chat.Message != "Open" || len(plugin.chat.ClickValues) != 1 {
+		t.Fatalf("unexpected client chat dispatch: %#v %#v", got, plugin.chat)
 	}
 }
 

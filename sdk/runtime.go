@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime/debug"
+	"strings"
 	"sync"
 )
 
@@ -75,6 +76,7 @@ func Dispatch(operation int, input []byte) (output []byte) {
 			break
 		}
 		metadata.ConfigWritable = configWritable(plugin, metadata.ConfigSchema)
+		metadata.ConfigEnums = configEnums(metadata.ConfigSchema)
 		result.Data = metadata
 	case OperationInit:
 		var event InitEvent
@@ -139,6 +141,14 @@ func Dispatch(operation int, input []byte) (output []byte) {
 		if err == nil {
 			if handler, ok := plugin.(ClientKeyHandler); ok {
 				err = handler.ClientKey(context, event)
+			}
+		}
+	case OperationClientChat:
+		var event ClientChatEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(ClientChatHandler); ok {
+				err = handler.ClientChat(context, event)
 			}
 		}
 	case OperationConfigUpdate:
@@ -289,7 +299,7 @@ func Dispatch(operation int, input []byte) (output []byte) {
 }
 
 func dispatchRunsOnClient(operation int, input []byte) bool {
-	if operation == OperationClientTick || operation == OperationClientKey || operation == OperationClientScreenEvent || operation == OperationClientScreenCapture {
+	if operation == OperationClientTick || operation == OperationClientKey || operation == OperationClientChat || operation == OperationClientScreenEvent || operation == OperationClientScreenCapture {
 		return true
 	}
 	var scope struct {
@@ -352,6 +362,64 @@ func configWritable(plugin Plugin, target any) bool {
 	}
 	value := reflect.ValueOf(target)
 	return value.Kind() == reflect.Pointer && !value.IsNil()
+}
+
+func configEnums(target any) map[string][]any {
+	value := reflect.ValueOf(target)
+	if !value.IsValid() {
+		return nil
+	}
+	for value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return nil
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return nil
+	}
+	result := make(map[string][]any)
+	collectConfigEnums(value.Type(), "", result)
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func collectConfigEnums(valueType reflect.Type, prefix string, result map[string][]any) {
+	for index := 0; index < valueType.NumField(); index++ {
+		field := valueType.Field(index)
+		if field.PkgPath != "" {
+			continue
+		}
+		name := field.Name
+		if jsonName := field.Tag.Get("json"); jsonName != "" {
+			name = jsonName
+			if comma := strings.IndexByte(name, ','); comma >= 0 {
+				name = name[:comma]
+			}
+			if name == "-" {
+				continue
+			}
+		}
+		path := name
+		if prefix != "" {
+			path = prefix + "." + name
+		}
+		if raw := field.Tag.Get("gbm"); raw != "" {
+			var values []any
+			if json.Unmarshal([]byte(raw), &values) == nil && len(values) > 0 {
+				result[path] = values
+			}
+		}
+		nested := field.Type
+		for nested.Kind() == reflect.Pointer {
+			nested = nested.Elem()
+		}
+		if nested.Kind() == reflect.Struct {
+			collectConfigEnums(nested, path, result)
+		}
+	}
 }
 
 func currentPlugin() Plugin {

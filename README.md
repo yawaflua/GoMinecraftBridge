@@ -404,6 +404,17 @@ Build it normally:
 go build -buildmode=c-shared -o dist/my_plugin.so .
 ```
 
+Fabric development runs can also build explicitly allowed Go projects found
+under `config/gbm/plugins` (server or `both`) and
+`config/gbm/client-plugins` (client or `both`). Add the exact `module` value
+from each project's `go.mod`, one per line, to
+`config/gbm/development-modules.txt`. Blank lines and lines starting with `#`
+are ignored. Production runs never invoke the Go toolchain. Each allowed
+project is built once per JVM session into `config/gbm/development-builds`
+with `go build -buildmode=c-shared` and loaded through normal ABI checks.
+Source changes still require a JVM restart because a live Go shared library
+cannot be safely replaced.
+
 It implements only the callbacks it needs. Configuration is an ordinary pointer
 to a Go struct; the SDK updates it before invoking `ConfigUpdated`:
 
@@ -411,9 +422,10 @@ to a Go struct; the SDK updates it before invoking `ConfigUpdated`:
 type config struct {
     Greeting string `json:"greeting"`
     Enabled  bool   `json:"enabled"`
+    Mode     string `json:"mode" gbm:"[\"compact\",\"full\",\"debug\"]"`
 }
 
-var cfg = &config{Greeting: "Hello from Go", Enabled: true}
+var cfg = &config{Greeting: "Hello from Go", Enabled: true, Mode: "compact"}
 
 func (myPlugin) ConfigUpdated(ctx *server.Context, event sdk.ConfigUpdateEvent) error {
     // cfg already contains the values saved in Cloth Config.
@@ -434,6 +446,11 @@ func (myPlugin) Chat(ctx *server.Context, event sdk.ChatEvent) error {
 }
 
 ```
+
+Fields tagged with `gbm` as a JSON array are rendered as selectors containing
+every declared value. Tags also work on nested structs; paths follow JSON field
+names. Values may be strings, numbers, or booleans and are still decoded into
+the original typed Go field when saved.
 
 Client-only plugins use `client.Register`; a single binary with independent
 server and client parts uses `dual.Register(metadata, serverPart, clientPart)`.

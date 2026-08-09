@@ -28,6 +28,7 @@ final class NativePluginConfigScreen {
 		}
 
 		JsonObject exposed = plugin.metadata().configSchema().deepCopy();
+		JsonObject enums = plugin.metadata().configEnums();
 		boolean jsonSchema = isJsonSchema(exposed);
 		JsonObject edited = jsonSchema ? new JsonObject() : exposed.deepCopy();
 		ConfigBuilder builder = ConfigBuilder.create()
@@ -37,7 +38,7 @@ final class NativePluginConfigScreen {
 		ConfigCategory category = builder.getOrCreateCategory(Component.literal("Configuration"));
 		int count = jsonSchema
 				? addSchemaObject(category, entries, exposed.getAsJsonObject("properties"), edited, "")
-				: addObject(category, entries, exposed, edited, "");
+				: addObject(category, entries, exposed, edited, enums, "");
 		if (count == 0) {
 			category.addEntry(entries.startTextDescription(Component.literal(
 					"No supported boolean, string, numeric, or primitive-list fields were exposed."
@@ -59,6 +60,7 @@ final class NativePluginConfigScreen {
 			ConfigEntryBuilder entries,
 			JsonObject source,
 			JsonObject edited,
+			JsonObject enums,
 			String prefix
 	) {
 		int count = 0;
@@ -67,8 +69,14 @@ final class NativePluginConfigScreen {
 			JsonElement value = field.getValue();
 			if (value.isJsonObject()) {
 				JsonObject child = edited.getAsJsonObject(field.getKey());
-				count += addObject(category, entries, value.getAsJsonObject(), child, path);
+				count += addObject(category, entries, value.getAsJsonObject(), child, enums, path);
 			} else {
+				JsonArray enumValues = enumValues(enums, path);
+				if (enumValues != null && addSelector(category, entries, Component.literal(path), value,
+						enumValues, newValue -> edited.add(field.getKey(), newValue))) {
+					count++;
+					continue;
+				}
 				count += addValue(category, entries, Component.literal(path), value, null,
 						newValue -> edited.add(field.getKey(), newValue));
 			}
@@ -102,19 +110,8 @@ final class NativePluginConfigScreen {
 			JsonElement initial = schema.has("default") ? schema.get("default").deepCopy() : defaultValue(schema);
 			edited.add(field.getKey(), initial.deepCopy());
 			if (schema.has("enum") && schema.get("enum").isJsonArray()) {
-				List<JsonPrimitive> choices = primitives(schema.getAsJsonArray("enum"));
-				if (!choices.isEmpty()) {
-					JsonPrimitive current = initial.isJsonPrimitive()
-							&& choices.contains(initial.getAsJsonPrimitive())
-							? initial.getAsJsonPrimitive()
-							: choices.getFirst();
-					category.addEntry(entries.startSelector(
-							Component.literal(title), choices.toArray(JsonPrimitive[]::new), current
-					).setNameProvider(value -> Component.literal(value.getAsString()))
-							.setDefaultValue(current)
-							.setTooltipSupplier(value -> fullStringTooltip(value.getAsString()))
-							.setSaveConsumer(value -> edited.add(field.getKey(), value.deepCopy()))
-							.build());
+				if (addSelector(category, entries, Component.literal(title), initial,
+						schema.getAsJsonArray("enum"), value -> edited.add(field.getKey(), value))) {
 					count++;
 					continue;
 				}
@@ -127,6 +124,38 @@ final class NativePluginConfigScreen {
 					newValue -> edited.add(field.getKey(), newValue));
 		}
 		return count;
+	}
+
+	private static JsonArray enumValues(JsonObject enums, String path) {
+		if (enums == null || !enums.has(path) || !enums.get(path).isJsonArray()) {
+			return null;
+		}
+		return enums.getAsJsonArray(path);
+	}
+
+	private static boolean addSelector(
+			ConfigCategory category,
+			ConfigEntryBuilder entries,
+			Component name,
+			JsonElement initial,
+			JsonArray enumValues,
+			java.util.function.Consumer<JsonElement> save
+	) {
+		List<JsonPrimitive> choices = primitives(enumValues);
+		if (choices.isEmpty()) {
+			return false;
+		}
+		JsonPrimitive current = initial != null && initial.isJsonPrimitive()
+				&& choices.contains(initial.getAsJsonPrimitive())
+				? initial.getAsJsonPrimitive()
+				: choices.getFirst();
+		category.addEntry(entries.startSelector(name, choices.toArray(JsonPrimitive[]::new), current)
+				.setNameProvider(value -> Component.literal(value.getAsString()))
+				.setDefaultValue(current)
+				.setTooltipSupplier(value -> fullStringTooltip(value.getAsString()))
+				.setSaveConsumer(value -> save.accept(value.deepCopy()))
+				.build());
+		return true;
 	}
 
 	private static JsonElement defaultValue(JsonObject schema) {

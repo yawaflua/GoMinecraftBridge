@@ -55,6 +55,27 @@ func (context *Context) DisplayClientMessage(message string) string {
 	})
 }
 
+func (context *Context) OpenClientBrowser(url string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.browser.open", map[string]any{"url": url})
+}
+
+func (context *Context) JoinClientSession(serverID string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.session.join", map[string]any{"serverId": serverID})
+}
+
+func (context *Context) SaveClientConfig(config any) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.config.save", map[string]any{"config": config})
+}
+
 // OpenClientScreen opens or updates a client-local Minecraft form and returns
 // its action ID. It returns an empty string in a server runtime.
 func (context *Context) OpenClientScreen(screen ClientScreen) string {

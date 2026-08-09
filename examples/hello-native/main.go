@@ -14,6 +14,13 @@ import (
 type serverPlugin struct {
 	capabilities []sdk.Capability
 }
+type TestEnum int8
+
+const (
+	TestEnumChat TestEnum = iota
+	TestEnumActionBar
+	TestEnumToast
+)
 
 type clientPlugin struct {
 	hudDemoTick       int64
@@ -32,15 +39,19 @@ func (plugin serverPlugin) AfterDamage(context *server.Context, event sdk.AfterD
 type helloConfig struct {
 	Greeting     string   `json:"greeting"`
 	Enabled      bool     `json:"enabled"`
+	MessageStyle string   `json:"messageStyle" gbm:"[\"chat\",\"action_bar\",\"toast\"]"`
 	RepeatTicks  int      `json:"repeatTicks"`
 	FavoriteTags []string `json:"favoriteTags"`
+	TestEnum     TestEnum `json:"testEnum" gbm:"[0,1,2]"`
 }
 
 var config = &helloConfig{
 	Greeting:     "Hello from Go!",
 	Enabled:      true,
+	MessageStyle: "chat",
 	RepeatTicks:  1200,
 	FavoriteTags: []string{"native", "go"},
+	TestEnum:     TestEnumChat,
 }
 
 func metadata() sdk.Metadata {

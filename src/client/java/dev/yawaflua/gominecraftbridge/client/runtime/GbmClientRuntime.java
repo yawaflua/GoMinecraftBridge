@@ -10,6 +10,7 @@ import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.InteractionEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ClientChatEvent;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
@@ -75,6 +76,10 @@ public final class GbmClientRuntime implements AutoCloseable {
 
 	public void tick(Minecraft client) {
 		this.plugins.tick(client);
+	}
+
+	public void chat(ClientChatEvent event) {
+		this.plugins.chat(event, Minecraft.getInstance());
 	}
 
 	public void interaction(InteractionEvent event) {

@@ -21,6 +21,7 @@ public final class GoMinecraftBridgeClient implements ClientModInitializer {
 			RUNTIME.start(client);
 			ClientHudRendering.register(RUNTIME.hud());
 			GbmFabricInteractionAdapter.register(true, (event, player) -> RUNTIME.interaction(event));
+			ClientMessageBridge.register();
 			ClientTickEvents.END_CLIENT_TICK.register(RUNTIME::tick);
 			ClientLifecycleEvents.CLIENT_STOPPING.register(RUNTIME::stop);
 		} catch (Exception e) {

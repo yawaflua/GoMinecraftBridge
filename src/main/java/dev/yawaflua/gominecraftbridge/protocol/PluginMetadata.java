@@ -15,6 +15,7 @@ public record PluginMetadata(
 		@SerializedName(value = "license", alternate = "licence") String license,
 		int apiVersion,
 		JsonObject configSchema,
+		JsonObject configEnums,
 		boolean configWritable,
 		PluginEnvironment environment,
 		List<ClientKeyBinding> clientKeyBindings
@@ -41,7 +42,7 @@ public record PluginMetadata(
 			PluginEnvironment environment
 	) {
 		this(id, name, version, description, authors, website, license, apiVersion, configSchema,
-				configWritable, environment, List.of());
+				null, configWritable, environment, List.of());
 	}
 
 	/** Source-compatible constructor for metadata created before license and environment were introduced. */
@@ -55,7 +56,7 @@ public record PluginMetadata(
 			int apiVersion,
 			JsonObject configSchema
 	) {
-		this(id, name, version, description, authors, website, null, apiVersion, configSchema, false, PluginEnvironment.SERVER, List.of());
+		this(id, name, version, description, authors, website, null, apiVersion, configSchema, null, false, PluginEnvironment.SERVER, List.of());
 	}
 
 	/** Source-compatible constructor for metadata created before license and writable configs. */
@@ -70,7 +71,7 @@ public record PluginMetadata(
 			JsonObject configSchema,
 			PluginEnvironment environment
 	) {
-		this(id, name, version, description, authors, website, null, apiVersion, configSchema, false, environment, List.of());
+		this(id, name, version, description, authors, website, null, apiVersion, configSchema, null, false, environment, List.of());
 	}
 
 	/** Convenience constructor for licensed metadata without writable configs or a declared environment. */
@@ -85,7 +86,7 @@ public record PluginMetadata(
 			int apiVersion,
 			JsonObject configSchema
 	) {
-		this(id, name, version, description, authors, website, license, apiVersion, configSchema, false, PluginEnvironment.SERVER, List.of());
+		this(id, name, version, description, authors, website, license, apiVersion, configSchema, null, false, PluginEnvironment.SERVER, List.of());
 	}
 
 	/** Convenience constructor for licensed metadata without writable configs. */
@@ -101,6 +102,6 @@ public record PluginMetadata(
 			JsonObject configSchema,
 			PluginEnvironment environment
 	) {
-		this(id, name, version, description, authors, website, license, apiVersion, configSchema, false, environment, List.of());
+		this(id, name, version, description, authors, website, license, apiVersion, configSchema, null, false, environment, List.of());
 	}
 }

@@ -9,6 +9,12 @@ import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.network.chat.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
@@ -30,10 +36,10 @@ public final class GbmFabricInteractionAdapter {
 			if (level.isClientSide() == adapter.clientSide) {
 				Vec3 location = hit.getLocation();
 				adapter.sink.accept(new InteractionEvent(
-						"use_block", hand(hand), player.isShiftKeyDown(), adapter.snapshots.entity(player),
+						"use_block", hand(hand), player.isShiftKeyDown(), player.isSprinting(), adapter.snapshots.entity(player),
 						adapter.snapshots.block(level, hit.getBlockPos()), null,
 						hit.getDirection().getSerializedName(), location.x, location.y, location.z,
-						Instant.now().toEpochMilli()
+						targetTexts(level.getBlockEntity(hit.getBlockPos())), Instant.now().toEpochMilli()
 				), player);
 			}
 			return InteractionResult.PASS;
@@ -41,7 +47,7 @@ public final class GbmFabricInteractionAdapter {
 		AttackBlockCallback.EVENT.register((player, level, hand, position, direction) -> {
 			if (level.isClientSide() == adapter.clientSide) {
 				adapter.sink.accept(new InteractionEvent(
-						"attack_block", hand(hand), player.isShiftKeyDown(), adapter.snapshots.entity(player),
+						"attack_block", hand(hand), player.isShiftKeyDown(), player.isSprinting(), adapter.snapshots.entity(player),
 						adapter.snapshots.block(level, position), null, direction.getSerializedName(),
 						null, null, null, Instant.now().toEpochMilli()
 				), player);
@@ -71,13 +77,28 @@ public final class GbmFabricInteractionAdapter {
 	) {
 		Vec3 location = hit == null ? null : hit.getLocation();
 		this.sink.accept(new InteractionEvent(
-				action, hand(hand), player.isShiftKeyDown(), this.snapshots.entity(player), null,
+				action, hand(hand), player.isShiftKeyDown(), player.isSprinting(), this.snapshots.entity(player), null,
 				this.snapshots.entity(target), null,
 				location == null ? null : location.x,
 				location == null ? null : location.y,
 				location == null ? null : location.z,
-				Instant.now().toEpochMilli()
+				targetTexts(target), Instant.now().toEpochMilli()
 		), player);
+	}
+
+	private static List<String> targetTexts(Object target) {
+		List<String> texts = new ArrayList<>();
+		if (target instanceof SignBlockEntity sign) {
+			for (Component line : sign.getFrontText().getMessages(false)) {
+				texts.add(line.getString());
+			}
+			for (Component line : sign.getBackText().getMessages(false)) {
+				texts.add(line.getString());
+			}
+		} else if (target instanceof ItemFrame frame && !frame.getItem().isEmpty()) {
+			texts.add(frame.getItem().getHoverName().getString());
+		}
+		return texts;
 	}
 
 	private static String hand(InteractionHand hand) {

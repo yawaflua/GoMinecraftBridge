@@ -51,22 +51,31 @@ public final class GoPluginManager {
 	private final NativePluginRegistry registry;
 	private final MinecraftSnapshotFactory snapshots = new MinecraftSnapshotFactory();
 	private final ActionExecutor actions = new ActionExecutor();
-	/** Lifecycle flag is read by the networking/admin thread as well as the server thread. */
+
 	private volatile boolean serverRunning;
 
 	public GoPluginManager(Logger logger) {
 		this.logger = logger;
-		// Path config = FabricLoader.getInstance().getConfigDir();
-		Path config = Path.of("/home/yawaflua/.local/share/PrismLauncher/instances/duopack_lid5pfax/minecraft/config/");
+		Path config = FabricLoader.getInstance().getConfigDir();
 		Path root = config.resolve("gbm");
 		this.legacyPluginDirectory = config.resolve("go-minecraft-bridge").resolve("plugins");
 		this.pluginDirectory = root.resolve("plugins");
 		this.dataDirectory = root.resolve("data");
+		DevelopmentGoProjectBuilder developmentBuilder = FabricLoader.getInstance().isDevelopmentEnvironment()
+				? new DevelopmentGoProjectBuilder(
+						root.resolve("development-modules.txt"), developmentOutput(root, "server")
+				)
+				: null;
 		this.registry = new NativePluginRegistry(new NativePackageScanner(List.of(
-				new NativePackageScanner.SearchRoot(this.pluginDirectory, false),
+				new NativePackageScanner.SearchRoot(this.pluginDirectory, false, true),
 				new NativePackageScanner.SearchRoot(this.legacyPluginDirectory, false),
 				new NativePackageScanner.SearchRoot(FabricLoader.getInstance().getGameDir().resolve("mods"), false)
-		)));
+		), developmentBuilder));
+	}
+
+	private static Path developmentOutput(Path root, String side) {
+		String session = ProcessHandle.current().pid() + "-" + Long.toUnsignedString(System.nanoTime());
+		return root.resolve("development-builds").resolve(side).resolve(session);
 	}
 
 	public synchronized void discover() {

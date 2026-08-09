@@ -42,7 +42,9 @@ public final class Protocol {
 		/** Lets a server plugin allow or deny a player chat message. */
 		ALLOW_CHAT(20),
 		/** Reports a registered client key binding press. */
-		CLIENT_KEY(21);
+		CLIENT_KEY(21),
+		/** Reports a client-local chat or game message. */
+		CLIENT_CHAT(22);
 
 		private final int code;
 

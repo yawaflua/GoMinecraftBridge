@@ -26,6 +26,7 @@ const (
 	OperationPlayerDisconnect    = 19
 	OperationAllowChat           = 20
 	OperationClientKey           = 21
+	OperationClientChat          = 22
 )
 
 // PluginEnvironment declares which Minecraft process may execute a plugin.
@@ -51,6 +52,7 @@ type Metadata struct {
 	// saves its Cloth Config screen. Maps containing a JSON Schema remain
 	// supported when the plugin implements ConfigUpdateHandler itself.
 	ConfigSchema      any                `json:"configSchema,omitempty"`
+	ConfigEnums       map[string][]any   `json:"configEnums,omitempty"`
 	ConfigWritable    bool               `json:"configWritable,omitempty"`
 	Environment       PluginEnvironment  `json:"environment"`
 	ClientKeyBindings []ClientKeyBinding `json:"clientKeyBindings,omitempty"`
@@ -106,18 +108,33 @@ const (
 	CapabilityClientHUD             Capability = "minecraft:client.hud"
 	CapabilityClientScreen          Capability = "minecraft:client.screen"
 	CapabilityClientScreenCapture   Capability = "minecraft:client.screen.capture"
+	CapabilityClientChatEvent       Capability = "minecraft:event.client_chat"
+	CapabilityClientBrowser         Capability = "minecraft:client.browser.open"
+	CapabilityClientSessionJoin     Capability = "minecraft:client.session.join"
+	CapabilityClientConfigSave      Capability = "minecraft:client.config.save"
 )
 
 // ClientTickEvent contains client-local state. Pointer-like values are empty
 // when the client is at the title screen or is not connected to a world.
 type ClientTickEvent struct {
-	Tick               int64  `json:"tick"`
-	TimestampUnixMilli int64  `json:"timestampUnixMilli"`
-	Connected          bool   `json:"connected"`
-	ServerAddress      string `json:"serverAddress,omitempty"`
-	PlayerUUID         string `json:"playerUuid,omitempty"`
-	PlayerName         string `json:"playerName,omitempty"`
-	Dimension          string `json:"dimension,omitempty"`
+	Tick               int64   `json:"tick"`
+	TimestampUnixMilli int64   `json:"timestampUnixMilli"`
+	Connected          bool    `json:"connected"`
+	ServerAddress      string  `json:"serverAddress,omitempty"`
+	PlayerUUID         string  `json:"playerUuid,omitempty"`
+	PlayerName         string  `json:"playerName,omitempty"`
+	Dimension          string  `json:"dimension,omitempty"`
+	HasPosition        bool    `json:"hasPosition"`
+	X                  float64 `json:"x"`
+	Y                  float64 `json:"y"`
+	Z                  float64 `json:"z"`
+	DayTime            int64   `json:"dayTime"`
+	FPS                int     `json:"fps"`
+}
+
+type ClientChatEvent struct {
+	Message     string   `json:"message"`
+	ClickValues []string `json:"clickValues"`
 }
 
 // ClientKeyEvent reports one press of a key binding declared in Metadata.
@@ -208,6 +225,7 @@ type InteractionEvent struct {
 	Action             InteractionAction `json:"action"`
 	Hand               string            `json:"hand"`
 	Sneaking           bool              `json:"sneaking"`
+	Sprinting          bool              `json:"sprinting"`
 	Player             EntitySnapshot    `json:"player"`
 	Block              *BlockSnapshot    `json:"block,omitempty"`
 	Target             *EntitySnapshot   `json:"target,omitempty"`
@@ -215,6 +233,7 @@ type InteractionEvent struct {
 	HitX               *float64          `json:"hitX,omitempty"`
 	HitY               *float64          `json:"hitY,omitempty"`
 	HitZ               *float64          `json:"hitZ,omitempty"`
+	TargetTexts        []string          `json:"targetTexts,omitempty"`
 	TimestampUnixMilli int64             `json:"timestampUnixMilli"`
 }
 

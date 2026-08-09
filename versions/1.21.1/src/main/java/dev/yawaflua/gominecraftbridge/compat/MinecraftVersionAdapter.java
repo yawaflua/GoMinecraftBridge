@@ -29,6 +29,11 @@ public final class MinecraftVersionAdapter {
 		return level.getDayTime();
 	}
 
+	public static long clientDayTime(Level level) {
+		return level.getDayTime();
+	}
+
+
 	public static boolean isOperator(MinecraftServer server, ServerPlayer player) {
 		return server.getPlayerList().isOp(player.getGameProfile());
 	}

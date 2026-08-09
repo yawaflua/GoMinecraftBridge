@@ -11,9 +11,15 @@ import java.util.Locale;
 /** Platform-neutral discovery of native GBM package files. */
 public final class NativePackageScanner {
 	private final List<SearchRoot> roots;
+	private final DevelopmentGoProjectBuilder developmentBuilder;
 
 	public NativePackageScanner(List<SearchRoot> roots) {
+		this(roots, null);
+	}
+
+	public NativePackageScanner(List<SearchRoot> roots, DevelopmentGoProjectBuilder developmentBuilder) {
 		this.roots = List.copyOf(roots);
+		this.developmentBuilder = developmentBuilder;
 	}
 
 	public ScanResult scan() {
@@ -32,6 +38,11 @@ public final class NativePackageScanner {
 			} catch (IOException exception) {
 				failures.add(new ScanFailure(root.path(), exception));
 			}
+			if (root.developmentProjects() && this.developmentBuilder != null) {
+				DevelopmentGoProjectBuilder.BuildResult build = this.developmentBuilder.buildProjects(root.path());
+				packages.addAll(build.packages());
+				failures.addAll(build.failures());
+			}
 		}
 		packages.sort(Comparator.comparing(Path::toString));
 		return new ScanResult(packages, failures);
@@ -48,7 +59,10 @@ public final class NativePackageScanner {
 		return ".so";
 	}
 
-	public record SearchRoot(Path path, boolean recursive) {
+	public record SearchRoot(Path path, boolean recursive, boolean developmentProjects) {
+		public SearchRoot(Path path, boolean recursive) {
+			this(path, recursive, false);
+		}
 	}
 
 	public record ScanFailure(Path root, IOException cause) {

@@ -36,11 +36,15 @@ public final class BridgeCapabilities {
 			"gbm:action_results",
 			"minecraft:event.client_tick",
 			"minecraft:event.client_key",
+			"minecraft:event.client_chat",
 			"minecraft:event.interaction",
 			"minecraft:client.chat.display",
 			"minecraft:client.hud",
 			"minecraft:client.screen",
-			"minecraft:client.screen.capture"
+			"minecraft:client.screen.capture",
+			"minecraft:client.browser.open",
+			"minecraft:client.session.join",
+			"minecraft:client.config.save"
 	);
 
 	private BridgeCapabilities() {

@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import dev.yawaflua.gominecraftbridge.compat.MinecraftVersionAdapter;
 import dev.yawaflua.gominecraftbridge.client.plugin.ClientPluginConfigStore;
 import dev.yawaflua.gominecraftbridge.client.plugin.ClientPluginResponseHandler;
+import dev.yawaflua.gominecraftbridge.host.DevelopmentGoProjectBuilder;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.host.NativePackageScanner;
 import dev.yawaflua.gominecraftbridge.host.NativePluginRegistry;
@@ -12,6 +13,7 @@ import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ClientChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.BridgeCapabilities;
 import dev.yawaflua.gominecraftbridge.protocol.ClientKeyEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenEvent;
@@ -64,11 +66,21 @@ public final class ClientGoPluginManager {
 				this::handleCaptureWarning
 		);
 		this.keyBindings = new ClientKeyBindingController(this::handleKeyEvent);
-		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures);
+		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures, this.configStore);
+		DevelopmentGoProjectBuilder developmentBuilder = FabricLoader.getInstance().isDevelopmentEnvironment()
+				? new DevelopmentGoProjectBuilder(
+						root.resolve("development-modules.txt"), developmentOutput(root, "client")
+				)
+				: null;
 		this.registry = new NativePluginRegistry(new NativePackageScanner(List.of(
 				new NativePackageScanner.SearchRoot(this.legacyPluginDirectory, true),
-				new NativePackageScanner.SearchRoot(this.managedPluginDirectory, true)
-		)));
+				new NativePackageScanner.SearchRoot(this.managedPluginDirectory, true, true)
+		), developmentBuilder));
+	}
+
+	private static Path developmentOutput(Path root, String side) {
+		String session = ProcessHandle.current().pid() + "-" + Long.toUnsignedString(System.nanoTime());
+		return root.resolve("development-builds").resolve(side).resolve(session);
 	}
 
 	public synchronized void discover() {
@@ -123,6 +135,12 @@ public final class ClientGoPluginManager {
 		}
 		this.keyBindings.tick();
 		this.captures.tick(client);
+	}
+
+	public synchronized void chat(ClientChatEvent event, Minecraft client) {
+		for (LoadedPlugin plugin : runningPlugins()) {
+			this.responses.invoke(plugin, Protocol.Operation.CLIENT_CHAT, event, client);
+		}
 	}
 
 	public synchronized void interaction(InteractionEvent event, Minecraft client) {
@@ -307,9 +325,15 @@ public final class ClientGoPluginManager {
 		String playerUuid = client.player == null ? null : client.player.getUUID().toString();
 		String playerName = client.player == null ? null : client.player.getName().getString();
 		String dimension = client.level == null ? null : MinecraftVersionAdapter.dimension(client.level);
+		boolean hasPosition = client.player != null;
+		long dayTime = client.level == null ? 0L : MinecraftVersionAdapter.clientDayTime(client.level);
 		return new ClientTickEvent(
 				this.tick, Instant.now().toEpochMilli(), connected, address,
-				playerUuid, playerName, dimension
+				playerUuid, playerName, dimension, hasPosition,
+				hasPosition ? client.player.getX() : 0.0,
+				hasPosition ? client.player.getY() : 0.0,
+				hasPosition ? client.player.getZ() : 0.0,
+				dayTime, client.getFps()
 		);
 	}
 

@@ -23,6 +23,10 @@ type ClientKeyHandler interface {
 	ClientKey(context *Context, event ClientKeyEvent) error
 }
 
+type ClientChatHandler interface {
+	ClientChat(context *Context, event ClientChatEvent) error
+}
+
 // ClientScreenEventHandler receives interactions from a screen opened by the
 // plugin. It is invoked only by a client native runtime.
 type ClientScreenEventHandler interface {

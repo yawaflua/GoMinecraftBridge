@@ -14,6 +14,10 @@ type KeyHandler interface {
 	KeyPressed(context *Context, event sdk.ClientKeyEvent) error
 }
 
+type ChatHandler interface {
+	ChatReceived(context *Context, event sdk.ClientChatEvent) error
+}
+
 type ConfigUpdateHandler interface {
 	ConfigUpdated(context *Context, event sdk.ConfigUpdateEvent) error
 }
@@ -84,6 +88,13 @@ func (adapter *adapter) ClientTick(context *sdk.Context, event sdk.ClientTickEve
 func (adapter *adapter) ClientKey(context *sdk.Context, event sdk.ClientKeyEvent) error {
 	if handler, ok := adapter.plugin.(KeyHandler); ok {
 		return handler.KeyPressed(wrapContext(context), event)
+	}
+	return nil
+}
+
+func (adapter *adapter) ClientChat(context *sdk.Context, event sdk.ClientChatEvent) error {
+	if handler, ok := adapter.plugin.(ChatHandler); ok {
+		return handler.ChatReceived(wrapContext(context), event)
 	}
 	return nil
 }

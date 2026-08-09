@@ -14,6 +14,18 @@ func (context *Context) DisplayMessage(message string) string {
 	return context.runtime.DisplayClientMessage(message)
 }
 
+func (context *Context) OpenBrowser(url string) string {
+	return context.runtime.OpenClientBrowser(url)
+}
+
+func (context *Context) JoinSession(serverID string) string {
+	return context.runtime.JoinClientSession(serverID)
+}
+
+func (context *Context) SaveConfig(config any) string {
+	return context.runtime.SaveClientConfig(config)
+}
+
 func (context *Context) SetHUD(elements ...sdk.HUDElement) string {
 	return context.runtime.SetHUD(elements...)
 }

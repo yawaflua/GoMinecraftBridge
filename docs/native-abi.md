@@ -50,6 +50,7 @@ panics are represented in the JSON response rather than the C status.
 | 19 | player disconnect | `PlayerConnectionEvent` |
 | 20 | allow chat | `ChatEvent`; boolean decision in response `data` |
 | 21 | client key | `ClientKeyEvent` JSON |
+| 22 | client chat | `ClientChatEvent` JSON |
 
 Operations 10, 12, and 20 are synchronous decisions. Damage and death decisions
 are Fabric-only; chat decisions are supported by Fabric and Paper. A plugin that
@@ -136,6 +137,10 @@ GBM then creates a configure button for the emulated native mod
 entry, converts its fields to Cloth Config entries, and sends the complete value
 through operation 9 whenever the screen is saved. The SDK unmarshals the value
 into the original pointer before calling the optional `ConfigUpdated` callback.
+Go struct fields tagged with `` gbm:"[\"value1\",\"value2\"]" `` expose all listed
+primitive values as a Cloth Config selector. Enum paths use JSON field names and
+support nested structs. Metadata transports these declarations in
+`configEnums`, separate from the current configuration value.
 
 Accepted values are persisted under
 `config/gbm/client-data/<plugin-id>/config.json` and restored
@@ -169,6 +174,8 @@ reports interactions through operation 14. `client.Context.CaptureScreen`
 does not return synchronously: the runtime coalesces pending requests, captures
 one framebuffer, and invokes operation 15 with RGBA8 bytes. The Go slice is valid
 only during `ScreenCaptured`.
+Received client chat and game messages invoke operation 22 with plain text and
+all click-event values found in the component tree.
 
 Server actions, snapshot subscriptions, and system calls are rejected locally
 and are never forwarded to the connected server. `InitEvent.runtimeEnvironment`

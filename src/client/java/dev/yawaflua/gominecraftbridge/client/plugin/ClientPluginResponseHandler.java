@@ -2,10 +2,13 @@ package dev.yawaflua.gominecraftbridge.client.plugin;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
+import com.google.gson.JsonObject;
+import com.mojang.authlib.exceptions.AuthenticationException;
 import dev.yawaflua.gominecraftbridge.client.ClientChatDisplay;
 import dev.yawaflua.gominecraftbridge.client.ClientHudState;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenCaptureController;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenController;
+import dev.yawaflua.gominecraftbridge.client.ClientSessionJoiner;
 import dev.yawaflua.gominecraftbridge.client.ClientProtocolInput;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
@@ -22,9 +25,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.slf4j.Logger;
 
+import java.awt.Desktop;
+import java.awt.HeadlessException;
+import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 
-/** Executes effects returned by a native plugin inside the Minecraft client. */
 public final class ClientPluginResponseHandler {
 	private static final int MAX_CALLBACK_CHAIN = 32;
 
@@ -32,17 +38,20 @@ public final class ClientPluginResponseHandler {
 	private final ClientHudState hud;
 	private final ClientScreenController screens;
 	private final ClientScreenCaptureController captures;
+	private final ClientPluginConfigStore configs;
 
 	public ClientPluginResponseHandler(
 			Logger logger,
 			ClientHudState hud,
 			ClientScreenController screens,
-			ClientScreenCaptureController captures
+			ClientScreenCaptureController captures,
+			ClientPluginConfigStore configs
 	) {
 		this.logger = logger;
 		this.hud = hud;
 		this.screens = screens;
 		this.captures = captures;
+		this.configs = configs;
 	}
 
 	public void invoke(LoadedPlugin plugin, Protocol.Operation operation, Object input, Minecraft client) {
@@ -206,6 +215,46 @@ public final class ClientPluginResponseHandler {
 			this.hud.remove(plugin.metadata().id(), id.getAsString());
 			return;
 		}
+		if ("minecraft:client.browser.open".equals(action.type())) {
+			String raw = requiredString(action.payload(), "url");
+			URI uri;
+			try {
+				uri = URI.create(raw);
+			} catch (IllegalArgumentException exception) {
+				throw new IllegalArgumentException("Rejected browser URL", exception);
+			}
+			if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())) || !uri.isAbsolute()) {
+				throw new IllegalArgumentException("Browser URL must be absolute http/https");
+			}
+			try {
+				Desktop.getDesktop().browse(uri);
+			} catch (IOException | HeadlessException exception) {
+				throw new IllegalStateException("Cannot open browser", exception);
+			}
+			return;
+		}
+		if ("minecraft:client.config.save".equals(action.type())) {
+			JsonElement rawConfig = action.payload() == null ? null : action.payload().get("config");
+			if (rawConfig == null || !rawConfig.isJsonObject()) {
+				throw new IllegalArgumentException("Config action requires an object");
+			}
+			try {
+				this.configs.write(plugin.metadata().id(), rawConfig.getAsJsonObject());
+				plugin.configSnapshot(rawConfig.getAsJsonObject());
+			} catch (IOException exception) {
+				throw new IllegalStateException("Cannot persist plugin configuration", exception);
+			}
+			return;
+		}
+		if ("minecraft:client.session.join".equals(action.type())) {
+			String serverId = requiredString(action.payload(), "serverId");
+			try {
+				ClientSessionJoiner.join(client, serverId);
+			} catch (AuthenticationException exception) {
+				throw new IllegalStateException("Minecraft session join failed", exception);
+			}
+			return;
+		}
 		if (!"minecraft:client.chat.display".equals(action.type())) {
 			throw new IllegalArgumentException("Rejected action in client runtime: " + action.type());
 		}
@@ -217,6 +266,14 @@ public final class ClientPluginResponseHandler {
 			throw new IllegalStateException("Cannot display client message outside a world");
 		}
 		ClientChatDisplay.display(client, Component.literal(message.getAsString()));
+	}
+
+	private static String requiredString(JsonObject payload, String field) {
+		JsonElement value = payload == null ? null : payload.get(field);
+		if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString() || value.getAsString().isBlank()) {
+			throw new IllegalArgumentException("Action field is required: " + field);
+		}
+		return value.getAsString();
 	}
 
 	private void writeLog(LoadedPlugin plugin, PluginLog log) {
