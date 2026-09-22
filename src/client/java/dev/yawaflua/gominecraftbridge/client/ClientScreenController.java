@@ -28,8 +28,11 @@ public final class ClientScreenController {
 		if (this.owner == null) {
 			this.parent = client.screen;
 		}
+		String focused = this.active != null && this.active.screenId().equals(spec.id())
+				? this.active.focusedInputId()
+				: null;
 		this.owner = plugin;
-		ClientFormScreen next = new ClientFormScreen(this.parent, spec, new Callbacks(plugin, spec.id(), client));
+		ClientFormScreen next = new ClientFormScreen(this.parent, spec, new Callbacks(plugin, spec.id(), client), focused);
 		this.active = next;
 		client.setScreen(next);
 	}
@@ -95,6 +98,20 @@ public final class ClientScreenController {
 			}
 			ClientScreenController.this.events.accept(this.plugin, new ClientScreenEvent(
 					this.screenId, "button", button.id(), null, values
+			));
+		}
+
+		@Override
+		public void changed(String elementId, Map<String, String> values) {
+			ClientScreenController.this.events.accept(this.plugin, new ClientScreenEvent(
+					this.screenId, "change", elementId, null, values
+			));
+		}
+
+		@Override
+		public void scrolled(String direction, Map<String, String> values) {
+			ClientScreenController.this.events.accept(this.plugin, new ClientScreenEvent(
+					this.screenId, "scroll", null, direction, values
 			));
 		}
 

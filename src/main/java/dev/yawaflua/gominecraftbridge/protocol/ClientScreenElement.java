@@ -17,7 +17,9 @@ public record ClientScreenElement(
 		long color,
 		boolean shadow,
 		String anchor,
-		boolean close
+		boolean close,
+		boolean disabled,
+		boolean notifyChanges
 ) {
 	public ClientScreenElement {
 		options = options == null ? List.of() : List.copyOf(options);

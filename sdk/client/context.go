@@ -54,6 +54,18 @@ func (context *Context) CaptureScreen() string {
 	return context.runtime.CaptureClientScreen()
 }
 
+func (context *Context) AddTitleButton(button sdk.TitleButton) string {
+	return context.runtime.AddTitleButton(button)
+}
+
+func (context *Context) RemoveTitleButton(id string) string {
+	return context.runtime.RemoveTitleButton(id)
+}
+
+func (context *Context) ClearTitleButtons() string {
+	return context.runtime.ClearTitleButtons()
+}
+
 func (context *Context) Log(level, message string) {
 	context.runtime.Log(level, message)
 }

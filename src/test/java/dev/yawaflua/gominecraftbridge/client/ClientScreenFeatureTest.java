@@ -21,9 +21,9 @@ final class ClientScreenFeatureTest {
 				"custom", "Custom", null,
 				List.of(new ClientScreenElement(
 						"panel", "rectangle", 0, 0, 300, 180,
-						null, null, null, 0, List.of(), 0xe0181820L, false, "center", false
+						null, null, null, 0, List.of(), 0xe0181820L, false, "center", false, false, false
 				)),
-				List.of(), List.of()
+				List.of(), List.of(), false
 		);
 		ClientScreenSpecValidator.validate(custom);
 
@@ -31,7 +31,8 @@ final class ClientScreenFeatureTest {
 				"payment", "Payment", "Body",
 				List.of(),
 				List.of(new ClientScreenField("amount", "number", "Amount", null, "", 16, List.of())),
-				List.of(new ClientScreenButton("submit", "Submit", true))
+				List.of(new ClientScreenButton("submit", "Submit", true)),
+				false
 		);
 		ClientScreenSpecValidator.validate(valid);
 
@@ -39,7 +40,8 @@ final class ClientScreenFeatureTest {
 				"payment", "Payment", null,
 				List.of(),
 				List.of(new ClientScreenField("submit", "text", "Value", null, "", 16, List.of())),
-				List.of(new ClientScreenButton("submit", "Submit", false))
+				List.of(new ClientScreenButton("submit", "Submit", false)),
+				false
 		);
 		assertThrows(IllegalArgumentException.class, () -> ClientScreenSpecValidator.validate(duplicate));
 	}

@@ -13,6 +13,7 @@ import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ClientTitleEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ClientChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.BridgeCapabilities;
 import dev.yawaflua.gominecraftbridge.protocol.ClientKeyEvent;
@@ -47,6 +48,7 @@ public final class ClientGoPluginManager {
 	private final ClientPluginConfigStore configStore;
 	private final ClientHudState hud = new ClientHudState();
 	private final ClientScreenController screens;
+	private final ClientTitleButtons titleButtons = new ClientTitleButtons();
 	private final ClientScreenCaptureController captures;
 	private final ClientKeyBindingController keyBindings;
 	private final ClientPluginResponseHandler responses;
@@ -66,7 +68,7 @@ public final class ClientGoPluginManager {
 				this::handleCaptureWarning
 		);
 		this.keyBindings = new ClientKeyBindingController(this::handleKeyEvent);
-		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures, this.configStore);
+		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures, this.configStore, this.titleButtons);
 		DevelopmentGoProjectBuilder developmentBuilder = FabricLoader.getInstance().isDevelopmentEnvironment()
 				? new DevelopmentGoProjectBuilder(
 						root.resolve("development-modules.txt"), developmentOutput(root, "client")
@@ -151,6 +153,28 @@ public final class ClientGoPluginManager {
 		}
 	}
 
+	public synchronized void titleShown(Minecraft client) {
+		var event = new ClientTitleEvent("shown", null, ClientTitleButtons.TITLE, Instant.now().toEpochMilli());
+		for (LoadedPlugin plugin : runningPlugins()) {
+			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TITLE, event, client);
+		}
+	}
+
+	public synchronized void titleButton(LoadedPlugin plugin, String buttonId, String screen, Minecraft client) {
+		if (plugin.state() == PluginState.RUNNING) {
+			this.responses.invoke(
+					plugin,
+					Protocol.Operation.CLIENT_TITLE,
+					new ClientTitleEvent("button", buttonId, screen, Instant.now().toEpochMilli()),
+					client
+			);
+		}
+	}
+
+	public ClientTitleButtons titleButtons() {
+		return this.titleButtons;
+	}
+
 	public synchronized void stop(Minecraft client) {
 		for (LoadedPlugin plugin : runningPlugins()) {
 			try {
@@ -166,6 +190,7 @@ public final class ClientGoPluginManager {
 				this.hud.clear(plugin.metadata().id());
 				this.captures.clear(plugin);
 				this.screens.clear(plugin, client);
+				this.titleButtons.clear(plugin);
 				plugin.markStopped();
 			}
 		}

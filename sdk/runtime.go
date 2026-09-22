@@ -151,6 +151,14 @@ func Dispatch(operation int, input []byte) (output []byte) {
 				err = handler.ClientChat(context, event)
 			}
 		}
+	case OperationClientTitle:
+		var event ClientTitleEvent
+		err = decode(input, &event)
+		if err == nil {
+			if handler, ok := plugin.(ClientTitleHandler); ok {
+				err = handler.ClientTitle(context, event)
+			}
+		}
 	case OperationConfigUpdate:
 		var event ConfigUpdateEvent
 		err = decode(input, &event)
@@ -299,7 +307,7 @@ func Dispatch(operation int, input []byte) (output []byte) {
 }
 
 func dispatchRunsOnClient(operation int, input []byte) bool {
-	if operation == OperationClientTick || operation == OperationClientKey || operation == OperationClientChat || operation == OperationClientScreenEvent || operation == OperationClientScreenCapture {
+	if operation == OperationClientTick || operation == OperationClientKey || operation == OperationClientChat || operation == OperationClientTitle || operation == OperationClientScreenEvent || operation == OperationClientScreenCapture {
 		return true
 	}
 	var scope struct {

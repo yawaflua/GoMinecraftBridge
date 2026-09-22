@@ -51,6 +51,7 @@ panics are represented in the JSON response rather than the C status.
 | 20 | allow chat | `ChatEvent`; boolean decision in response `data` |
 | 21 | client key | `ClientKeyEvent` JSON |
 | 22 | client chat | `ClientChatEvent` JSON |
+| 23 | client title | `ClientTitleEvent` JSON |
 
 Operations 10, 12, and 20 are synchronous decisions. Damage and death decisions
 are Fabric-only; chat decisions are supported by Fabric and Paper. A plugin that
@@ -175,7 +176,24 @@ does not return synchronously: the runtime coalesces pending requests, captures
 one framebuffer, and invokes operation 15 with RGBA8 bytes. The Go slice is valid
 only during `ScreenCaptured`.
 Received client chat and game messages invoke operation 22 with plain text and
-all click-event values found in the component tree.
+all click-event values found in the component tree. Client plugins start with
+`Init` at game startup, before any world is open. Operation 23 reports the
+title screen (`{"type":"shown"}`) and main-menu button clicks
+(`{"type":"button","buttonId":"..."}`). `Context.AddTitleButton` declares a
+button rendered under the vanilla TitleScreen entries; clicks are delivered to
+the owning plugin through operation 23, so Go code runs both at startup and in
+the main menu, not only inside a world. A button with `screen: "pause"` is
+added to the pause menu instead; with a non-zero `width` its `x`/`y` are offsets
+from the menu origin (horizontal center, `height/4`), otherwise buttons are
+stacked under the vanilla entries. Click events carry the same `screen` value.
+
+Custom-element screens support `disabled` buttons/selects and `notifyChanges` inputs:
+every edit of a notifying input sends a `ClientScreenEvent` with
+`type: "change"` and `buttonId` set to the input ID. A screen with
+`scroll: true` reports mouse-wheel movement as `type: "scroll"` with
+`reason: "up"` or `"down"`. Reopening a screen with the same ID keeps keyboard
+focus on the same input. HUD elements with `overScreens: true` are drawn above
+any open screen instead of the in-game HUD layer.
 
 Server actions, snapshot subscriptions, and system calls are rejected locally
 and are never forwarded to the connected server. `InitEvent.runtimeEnvironment`

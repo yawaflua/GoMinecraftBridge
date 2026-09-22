@@ -5,6 +5,7 @@ import dev.yawaflua.gominecraftbridge.catalog.CatalogSettings;
 import dev.yawaflua.gominecraftbridge.catalog.GbmCatalogService;
 import dev.yawaflua.gominecraftbridge.client.ClientGoPluginManager;
 import dev.yawaflua.gominecraftbridge.client.ClientHudState;
+import dev.yawaflua.gominecraftbridge.client.ClientTitleButtons;
 import dev.yawaflua.gominecraftbridge.client.catalog.CatalogTaskController;
 import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
@@ -88,6 +89,18 @@ public final class GbmClientRuntime implements AutoCloseable {
 
 	public ClientHudState hud() {
 		return this.plugins.hud();
+	}
+
+	public void titleShown(Minecraft client) {
+		this.plugins.titleShown(client);
+	}
+
+	public void titleButtonClicked(dev.yawaflua.gominecraftbridge.host.LoadedPlugin plugin, String buttonId, String screen, Minecraft client) {
+		this.plugins.titleButton(plugin, buttonId, screen, client);
+	}
+
+	public ClientTitleButtons titleButtons() {
+		return this.plugins.titleButtons();
 	}
 
 	public BridgeManagementSnapshot localPlugins() {

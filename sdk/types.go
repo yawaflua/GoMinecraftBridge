@@ -27,6 +27,7 @@ const (
 	OperationAllowChat           = 20
 	OperationClientKey           = 21
 	OperationClientChat          = 22
+	OperationClientTitle         = 23
 )
 
 // PluginEnvironment declares which Minecraft process may execute a plugin.
@@ -109,6 +110,8 @@ const (
 	CapabilityClientScreen          Capability = "minecraft:client.screen"
 	CapabilityClientScreenCapture   Capability = "minecraft:client.screen.capture"
 	CapabilityClientChatEvent       Capability = "minecraft:event.client_chat"
+	CapabilityClientTitle           Capability = "minecraft:event.client_title"
+	CapabilityClientTitleButton     Capability = "minecraft:client.title_button"
 	CapabilityClientBrowser         Capability = "minecraft:client.browser.open"
 	CapabilityClientSessionJoin     Capability = "minecraft:client.session.join"
 	CapabilityClientConfigSave      Capability = "minecraft:client.config.save"
@@ -135,6 +138,36 @@ type ClientTickEvent struct {
 type ClientChatEvent struct {
 	Message     string   `json:"message"`
 	ClickValues []string `json:"clickValues"`
+}
+
+// ClientTitleEvent reports title-screen lifecycle ("shown") or a menu button
+// press ("button"). Buttons are declared with Context.AddTitleButton; Screen
+// names the menu that contained the pressed button.
+type ClientTitleEvent struct {
+	Type               string     `json:"type"`
+	ButtonID           string     `json:"buttonId,omitempty"`
+	Screen             MenuScreen `json:"screen,omitempty"`
+	TimestampUnixMilli int64      `json:"timestampUnixMilli"`
+}
+
+// MenuScreen selects the vanilla menu that receives a TitleButton.
+type MenuScreen string
+
+const (
+	MenuScreenTitle MenuScreen = "title"
+	MenuScreenPause MenuScreen = "pause"
+)
+
+// TitleButton declares one menu button owned by a client plugin. Without a
+// Width, buttons are stacked under the vanilla entries. With a Width, X and Y
+// are offsets from the vanilla menu origin (horizontal center, height/4).
+type TitleButton struct {
+	ID     string     `json:"id"`
+	Label  string     `json:"label"`
+	Screen MenuScreen `json:"screen,omitempty"`
+	X      int        `json:"x,omitempty"`
+	Y      int        `json:"y,omitempty"`
+	Width  int        `json:"width,omitempty"`
 }
 
 // ClientKeyEvent reports one press of a key binding declared in Metadata.
@@ -370,6 +403,9 @@ type ClientScreen struct {
 	Elements []ClientScreenElement `json:"elements,omitempty"`
 	Fields   []ClientScreenField   `json:"fields,omitempty"`
 	Buttons  []ClientScreenButton  `json:"buttons,omitempty"`
+	// Scroll reports mouse-wheel movement over a custom-element screen as
+	// "scroll" events whose Reason is "up" or "down".
+	Scroll bool `json:"scroll,omitempty"`
 }
 
 // ClientScreenElementType selects a primitive in a freely positioned custom
@@ -391,6 +427,9 @@ const (
 // Coordinates use GUI-scaled pixels relative to Anchor. A hitbox makes any
 // separately drawn composition clickable without adding a vanilla button.
 // Interactive elements return values under ID; Close restores the parent.
+// Disabled renders a button or select greyed out and ignores clicks. Notify
+// makes an input report every edit as a "change" event whose ButtonID is the
+// element ID. Reopening a screen with the same ID keeps the focused input.
 type ClientScreenElement struct {
 	ID          string                  `json:"id"`
 	Type        ClientScreenElementType `json:"type"`
@@ -407,6 +446,8 @@ type ClientScreenElement struct {
 	Shadow      bool                    `json:"shadow,omitempty"`
 	Anchor      HUDAnchor               `json:"anchor,omitempty"`
 	Close       bool                    `json:"close,omitempty"`
+	Disabled    bool                    `json:"disabled,omitempty"`
+	Notify      bool                    `json:"notifyChanges,omitempty"`
 }
 
 // ClientScreenFieldType selects the widget used by a client screen field.
@@ -484,6 +525,8 @@ const (
 )
 
 // HUDElement is a retained client HUD primitive. Color uses ARGB byte order.
+// A text element with non-zero Width/Height is anchored using those sizes
+// instead of the measured text bounds.
 type HUDElement struct {
 	ID     string    `json:"id,omitempty"`
 	Type   string    `json:"type"`
@@ -498,6 +541,9 @@ type HUDElement struct {
 	// DurationMillis removes the element automatically after this many
 	// milliseconds. Zero keeps it until explicitly replaced or removed.
 	DurationMillis int64 `json:"durationMillis,omitempty"`
+	// OverScreens draws the element above open screens instead of the in-game
+	// HUD layer, so it stays visible in menus and plugin screens.
+	OverScreens bool `json:"overScreens,omitempty"`
 }
 
 type SystemCallRequest struct {

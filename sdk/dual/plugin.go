@@ -170,6 +170,13 @@ func (adapter *adapter) ClientScreenCaptured(context *sdk.Context, capture sdk.C
 	return nil
 }
 
+func (adapter *adapter) ClientTitle(context *sdk.Context, event sdk.ClientTitleEvent) error {
+	if handler, ok := adapter.client.(sdk.ClientTitleHandler); ok {
+		return handler.ClientTitle(context, event)
+	}
+	return nil
+}
+
 func (adapter *adapter) SystemCallResult(context *sdk.Context, result sdk.SystemCallResult) error {
 	if handler, ok := adapter.side(context).(sdk.SystemCallResultHandler); ok {
 		return handler.SystemCallResult(context, result)

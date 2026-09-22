@@ -97,11 +97,34 @@ func (plugin *serverPlugin) Init(context *server.Context, event sdk.InitEvent) e
 	return nil
 }
 
-func (clientPlugin) Init(_ *client.Context, event sdk.InitEvent) error {
+func (clientPlugin) Init(context *client.Context, event sdk.InitEvent) error {
 	fmt.Printf(
 		"initialized client for Minecraft %s; data=%s; capabilities=%v\n",
 		event.MinecraftVersion, event.DataDirectory, event.Capabilities,
 	)
+	context.AddTitleButton(sdk.TitleButton{ID: "hello-notify", Label: "Hello notification"})
+	return nil
+}
+
+func (clientPlugin) Title(context *client.Context, event sdk.ClientTitleEvent) error {
+	if event.Type == "button" && event.ButtonID == "hello-notify" {
+		context.OpenScreen(sdk.ClientScreen{
+			ID:    "hello-notice",
+			Title: "Hello Native",
+			Elements: []sdk.ClientScreenElement{
+				{
+					ID: "text", Type: sdk.ClientScreenElementText,
+					Anchor: sdk.HUDCenter, X: 0, Y: -10,
+					Text: "Hello from the main menu!", Color: 0xffffffff, Shadow: true,
+				},
+				{
+					ID: "ok", Type: sdk.ClientScreenElementButton,
+					Anchor: sdk.HUDCenter, X: 0, Y: 20, Width: 120, Height: 20,
+					Text: "OK", Close: true,
+				},
+			},
+		})
+	}
 	return nil
 }
 

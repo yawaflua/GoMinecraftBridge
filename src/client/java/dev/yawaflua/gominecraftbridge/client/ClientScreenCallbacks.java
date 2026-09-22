@@ -7,5 +7,9 @@ import java.util.Map;
 interface ClientScreenCallbacks {
 	void button(ClientScreenButton button, Map<String, String> values);
 
+	void changed(String elementId, Map<String, String> values);
+
+	void scrolled(String direction, Map<String, String> values);
+
 	void closed(Map<String, String> values);
 }

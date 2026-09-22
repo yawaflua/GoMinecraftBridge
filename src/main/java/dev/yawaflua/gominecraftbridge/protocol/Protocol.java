@@ -44,7 +44,9 @@ public final class Protocol {
 		/** Reports a registered client key binding press. */
 		CLIENT_KEY(21),
 		/** Reports a client-local chat or game message. */
-		CLIENT_CHAT(22);
+		CLIENT_CHAT(22),
+		/** Reports title-screen lifecycle and main-menu button clicks. */
+		CLIENT_TITLE(23);
 
 		private final int code;
 

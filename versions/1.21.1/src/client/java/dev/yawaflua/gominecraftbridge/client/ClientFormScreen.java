@@ -24,6 +24,7 @@ final class ClientFormScreen extends Screen {
 	private final Screen parent;
 	private final ClientScreenSpec spec;
 	private final ClientScreenCallbacks callbacks;
+	private final String initialFocusId;
 	private final Map<String, EditBox> edits = new LinkedHashMap<>();
 	private final Map<String, SelectValue> selects = new LinkedHashMap<>();
 	private final Map<AbstractWidget, Integer> positions = new LinkedHashMap<>();
@@ -31,11 +32,12 @@ final class ClientFormScreen extends Screen {
 	private int scroll;
 	private int contentHeight;
 
-	ClientFormScreen(Screen parent, ClientScreenSpec spec, ClientScreenCallbacks callbacks) {
+	ClientFormScreen(Screen parent, ClientScreenSpec spec, ClientScreenCallbacks callbacks, String initialFocusId) {
 		super(Component.literal(spec.title() == null ? "" : spec.title()));
 		this.parent = parent;
 		this.spec = spec;
 		this.callbacks = callbacks;
+		this.initialFocusId = initialFocusId;
 	}
 
 	String screenId() {
@@ -47,6 +49,25 @@ final class ClientFormScreen extends Screen {
 		this.edits.forEach((id, edit) -> values.put(id, edit.getValue()));
 		this.selects.forEach((id, select) -> values.put(id, select.value()));
 		return Map.copyOf(values);
+	}
+
+	String focusedInputId() {
+		for (Map.Entry<String, EditBox> entry : this.edits.entrySet()) {
+			if (entry.getValue() == this.getFocused()) {
+				return entry.getKey();
+			}
+		}
+		return null;
+	}
+
+	@Override
+	protected void setInitialFocus() {
+		EditBox edit = this.initialFocusId == null ? null : this.edits.get(this.initialFocusId);
+		if (edit == null) {
+			super.setInitialFocus();
+			return;
+		}
+		this.setInitialFocus(edit);
 	}
 
 	@Override
@@ -108,12 +129,16 @@ final class ClientFormScreen extends Screen {
 			);
 				switch (element.type()) {
 				case "hitbox" -> this.hitboxes.add(element);
-				case "button" -> this.addRenderableWidget(Button.builder(
-						Component.literal(element.text() == null ? "" : element.text()),
-						ignored -> this.callbacks.button(
-								new ClientScreenButton(element.id(), element.text(), element.close()), values()
-						)
-				).bounds(position.x(), position.y(), width, height).build());
+				case "button" -> {
+					Button button = Button.builder(
+							Component.literal(element.text() == null ? "" : element.text()),
+							ignored -> this.callbacks.button(
+									new ClientScreenButton(element.id(), element.text(), element.close()), values()
+							)
+					).bounds(position.x(), position.y(), width, height).build();
+					button.active = !element.disabled();
+					this.addRenderableWidget(button);
+				}
 				case "text_input", "number_input", "password_input" -> {
 					EditBox edit = new EditBox(
 							this.font, position.x(), position.y(), width, height,
@@ -130,6 +155,9 @@ final class ClientFormScreen extends Screen {
 					if ("password_input".equals(element.type())) {
 						edit.setFormatter((value, offset) -> FormattedCharSequence.forward("*".repeat(value.length()), Style.EMPTY));
 					}
+					if (element.notifyChanges()) {
+						edit.setResponder(ignored -> this.callbacks.changed(element.id(), values()));
+					}
 					this.edits.put(element.id(), edit);
 					this.addRenderableWidget(edit);
 				}
@@ -139,6 +167,7 @@ final class ClientFormScreen extends Screen {
 						select.next();
 						ignored.setMessage(Component.literal(select.label()));
 					}).bounds(position.x(), position.y(), width, height).build();
+					button.active = !element.disabled();
 					this.selects.put(element.id(), select);
 					this.addRenderableWidget(button);
 				}
@@ -184,6 +213,10 @@ final class ClientFormScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+		if (vertical != 0 && this.spec.scroll() && !this.spec.elements().isEmpty()) {
+			this.callbacks.scrolled(vertical > 0 ? "up" : "down", values());
+			return true;
+		}
 		if (vertical != 0) {
 			this.scroll -= (int) Math.signum(vertical) * 24;
 			updatePositions();

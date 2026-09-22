@@ -10,7 +10,7 @@ import java.util.List;
 
 /** Application service for GBM search, installation, manifests, and updates. */
 public final class GbmCatalogService {
-	public static final String DEFAULT_BACKEND_URL = "http://localhost:8080";
+	public static final String DEFAULT_BACKEND_URL = "https://bm.ywfl.dev"; // You can also use your own self-hosted backend
 	public static final String SIDECAR_FILE = PackageManifestStore.FILE_NAME;
 
 	private final InstallationTarget target;

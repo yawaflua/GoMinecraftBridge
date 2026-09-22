@@ -139,6 +139,32 @@ func (context *Context) RemoveHUD(id string) string {
 	})
 }
 
+// AddTitleButton declares a main-menu button for this client plugin and
+// returns its action ID. Clicks arrive through ClientTitleHandler even when
+// no world is open. It returns an empty string in a server runtime.
+func (context *Context) AddTitleButton(button TitleButton) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.title_button.add", button)
+}
+
+// RemoveTitleButton removes one main-menu button by ID.
+func (context *Context) RemoveTitleButton(id string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.title_button.remove", map[string]any{"id": id})
+}
+
+// ClearTitleButtons removes every main-menu button owned by this plugin.
+func (context *Context) ClearTitleButtons() string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.title_button.clear", map[string]any{})
+}
+
 func (context *Context) queueAction(actionType string, payload any) string {
 	id := fmt.Sprintf("action-%d", callSequence.Add(1))
 	context.actions = append(context.actions, ActionRequest{ID: id, Type: actionType, Payload: payload})
@@ -148,6 +174,12 @@ func (context *Context) queueAction(actionType string, payload any) string {
 // Named returns a copy with the ID used by RenderHUD and RemoveHUD.
 func (element HUDElement) Named(id string) HUDElement {
 	element.ID = id
+	return element
+}
+
+// OnScreens returns a copy drawn above open screens instead of the HUD layer.
+func (element HUDElement) OnScreens() HUDElement {
+	element.OverScreens = true
 	return element
 }
 

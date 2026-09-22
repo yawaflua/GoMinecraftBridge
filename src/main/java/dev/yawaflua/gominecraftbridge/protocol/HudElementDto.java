@@ -12,6 +12,7 @@ public record HudElementDto(
 		long color,
 		boolean shadow,
 		String anchor,
-		long durationMillis
+		long durationMillis,
+		boolean overScreens
 ) {
 }

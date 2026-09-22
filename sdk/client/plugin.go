@@ -30,6 +30,10 @@ type ScreenCaptureHandler interface {
 	ScreenCaptured(context *Context, capture sdk.ClientScreenCapture) error
 }
 
+type TitleHandler interface {
+	Title(context *Context, event sdk.ClientTitleEvent) error
+}
+
 type InteractionHandler interface {
 	Interaction(context *Context, event sdk.InteractionEvent) error
 }
@@ -116,6 +120,13 @@ func (adapter *adapter) ClientScreenEvent(context *sdk.Context, event sdk.Client
 func (adapter *adapter) ClientScreenCaptured(context *sdk.Context, capture sdk.ClientScreenCapture) error {
 	if handler, ok := adapter.plugin.(ScreenCaptureHandler); ok {
 		return handler.ScreenCaptured(wrapContext(context), capture)
+	}
+	return nil
+}
+
+func (adapter *adapter) ClientTitle(context *sdk.Context, event sdk.ClientTitleEvent) error {
+	if handler, ok := adapter.plugin.(TitleHandler); ok {
+		return handler.Title(wrapContext(context), event)
 	}
 	return nil
 }

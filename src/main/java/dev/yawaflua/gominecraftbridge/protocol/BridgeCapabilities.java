@@ -44,7 +44,9 @@ public final class BridgeCapabilities {
 			"minecraft:client.screen.capture",
 			"minecraft:client.browser.open",
 			"minecraft:client.session.join",
-			"minecraft:client.config.save"
+			"minecraft:client.config.save",
+			"minecraft:event.client_title",
+			"minecraft:client.title_button"
 	);
 
 	private BridgeCapabilities() {

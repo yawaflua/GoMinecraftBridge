@@ -9,6 +9,7 @@ import dev.yawaflua.gominecraftbridge.client.ClientHudState;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenCaptureController;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenController;
 import dev.yawaflua.gominecraftbridge.client.ClientSessionJoiner;
+import dev.yawaflua.gominecraftbridge.client.ClientTitleButtons;
 import dev.yawaflua.gominecraftbridge.client.ClientProtocolInput;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
@@ -39,19 +40,22 @@ public final class ClientPluginResponseHandler {
 	private final ClientScreenController screens;
 	private final ClientScreenCaptureController captures;
 	private final ClientPluginConfigStore configs;
+	private final ClientTitleButtons titleButtons;
 
 	public ClientPluginResponseHandler(
 			Logger logger,
 			ClientHudState hud,
 			ClientScreenController screens,
 			ClientScreenCaptureController captures,
-			ClientPluginConfigStore configs
+			ClientPluginConfigStore configs,
+			ClientTitleButtons titleButtons
 	) {
 		this.logger = logger;
 		this.hud = hud;
 		this.screens = screens;
 		this.captures = captures;
 		this.configs = configs;
+		this.titleButtons = titleButtons;
 	}
 
 	public void invoke(LoadedPlugin plugin, Protocol.Operation operation, Object input, Minecraft client) {
@@ -127,6 +131,7 @@ public final class ClientPluginResponseHandler {
 		plugin.disable();
 		this.hud.clear(plugin.metadata().id());
 		this.captures.clear(plugin);
+		this.titleButtons.clear(plugin);
 		this.screens.clear(plugin, Minecraft.getInstance());
 		bridgeLog(plugin, "error", "Plugin disabled: " + reason
 				+ (throwable == null ? "" : " — " + rootMessage(throwable)));
@@ -255,6 +260,26 @@ public final class ClientPluginResponseHandler {
 			}
 			return;
 		}
+		if ("minecraft:client.title_button.add".equals(action.type())) {
+			this.titleButtons.add(
+					plugin,
+					requiredString(action.payload(), "id"),
+					requiredString(action.payload(), "label"),
+					optionalString(action.payload(), "screen"),
+					optionalInt(action.payload(), "x"),
+					optionalInt(action.payload(), "y"),
+					optionalInt(action.payload(), "width")
+			);
+			return;
+		}
+		if ("minecraft:client.title_button.remove".equals(action.type())) {
+			this.titleButtons.remove(plugin, requiredString(action.payload(), "id"));
+			return;
+		}
+		if ("minecraft:client.title_button.clear".equals(action.type())) {
+			this.titleButtons.clear(plugin);
+			return;
+		}
 		if (!"minecraft:client.chat.display".equals(action.type())) {
 			throw new IllegalArgumentException("Rejected action in client runtime: " + action.type());
 		}
@@ -274,6 +299,28 @@ public final class ClientPluginResponseHandler {
 			throw new IllegalArgumentException("Action field is required: " + field);
 		}
 		return value.getAsString();
+	}
+
+	private static String optionalString(JsonObject payload, String field) {
+		JsonElement value = payload == null ? null : payload.get(field);
+		if (value == null || value.isJsonNull()) {
+			return null;
+		}
+		if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+			throw new IllegalArgumentException("Action field must be a string: " + field);
+		}
+		return value.getAsString();
+	}
+
+	private static int optionalInt(JsonObject payload, String field) {
+		JsonElement value = payload == null ? null : payload.get(field);
+		if (value == null || value.isJsonNull()) {
+			return 0;
+		}
+		if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+			throw new IllegalArgumentException("Action field must be a number: " + field);
+		}
+		return value.getAsInt();
 	}
 
 	private void writeLog(LoadedPlugin plugin, PluginLog log) {

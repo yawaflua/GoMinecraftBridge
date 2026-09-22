@@ -8,7 +8,8 @@ public record ClientScreenSpec(
 		String body,
 		List<ClientScreenElement> elements,
 		List<ClientScreenField> fields,
-		List<ClientScreenButton> buttons
+		List<ClientScreenButton> buttons,
+		boolean scroll
 ) {
 	public ClientScreenSpec {
 		elements = elements == null ? List.of() : List.copyOf(elements);
