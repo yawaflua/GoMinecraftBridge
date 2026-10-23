@@ -13,7 +13,7 @@ import dev.yawaflua.gominecraftbridge.management.BridgeManagementSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ManagedPluginSnapshot;
 import dev.yawaflua.gominecraftbridge.management.ReloadResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientTickEvent;
-import dev.yawaflua.gominecraftbridge.protocol.ClientTitleEvent;
+import dev.yawaflua.gominecraftbridge.protocol.ClientMenuEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ClientChatEvent;
 import dev.yawaflua.gominecraftbridge.protocol.BridgeCapabilities;
 import dev.yawaflua.gominecraftbridge.protocol.ClientKeyEvent;
@@ -48,7 +48,7 @@ public final class ClientGoPluginManager {
 	private final ClientPluginConfigStore configStore;
 	private final ClientHudState hud = new ClientHudState();
 	private final ClientScreenController screens;
-	private final ClientTitleButtons titleButtons = new ClientTitleButtons();
+	private final ClientMenuButtons menuButtons = new ClientMenuButtons();
 	private final ClientScreenCaptureController captures;
 	private final ClientKeyBindingController keyBindings;
 	private final ClientPluginResponseHandler responses;
@@ -68,7 +68,7 @@ public final class ClientGoPluginManager {
 				this::handleCaptureWarning
 		);
 		this.keyBindings = new ClientKeyBindingController(this::handleKeyEvent);
-		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures, this.configStore, this.titleButtons);
+		this.responses = new ClientPluginResponseHandler(logger, this.hud, this.screens, this.captures, this.configStore, this.menuButtons);
 		DevelopmentGoProjectBuilder developmentBuilder = FabricLoader.getInstance().isDevelopmentEnvironment()
 				? new DevelopmentGoProjectBuilder(
 						root.resolve("development-modules.txt"), developmentOutput(root, "client")
@@ -132,8 +132,9 @@ public final class ClientGoPluginManager {
 		this.tick++;
 		this.hud.pruneExpired();
 		this.screens.tick(client);
+		ClientTickEvent event = ClientTickSnapshots.create(client, this.tick, this.screens);
 		for (LoadedPlugin plugin : runningPlugins()) {
-			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TICK, createTick(client), client);
+			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TICK, event, client);
 		}
 		this.keyBindings.tick();
 		this.captures.tick(client);
@@ -154,25 +155,25 @@ public final class ClientGoPluginManager {
 	}
 
 	public synchronized void titleShown(Minecraft client) {
-		var event = new ClientTitleEvent("shown", null, ClientTitleButtons.TITLE, Instant.now().toEpochMilli());
+		var event = new ClientMenuEvent("shown", null, ClientMenuButtons.TITLE, Instant.now().toEpochMilli());
 		for (LoadedPlugin plugin : runningPlugins()) {
-			this.responses.invoke(plugin, Protocol.Operation.CLIENT_TITLE, event, client);
+			this.responses.invoke(plugin, Protocol.Operation.CLIENT_MENU, event, client);
 		}
 	}
 
-	public synchronized void titleButton(LoadedPlugin plugin, String buttonId, String screen, Minecraft client) {
+	public synchronized void menuButton(LoadedPlugin plugin, String buttonId, String screen, Minecraft client) {
 		if (plugin.state() == PluginState.RUNNING) {
 			this.responses.invoke(
 					plugin,
-					Protocol.Operation.CLIENT_TITLE,
-					new ClientTitleEvent("button", buttonId, screen, Instant.now().toEpochMilli()),
+					Protocol.Operation.CLIENT_MENU,
+					new ClientMenuEvent("button", buttonId, screen, Instant.now().toEpochMilli()),
 					client
 			);
 		}
 	}
 
-	public ClientTitleButtons titleButtons() {
-		return this.titleButtons;
+	public ClientMenuButtons menuButtons() {
+		return this.menuButtons;
 	}
 
 	public synchronized void stop(Minecraft client) {
@@ -190,7 +191,7 @@ public final class ClientGoPluginManager {
 				this.hud.clear(plugin.metadata().id());
 				this.captures.clear(plugin);
 				this.screens.clear(plugin, client);
-				this.titleButtons.clear(plugin);
+				this.menuButtons.clear(plugin);
 				plugin.markStopped();
 			}
 		}
@@ -340,26 +341,6 @@ public final class ClientGoPluginManager {
 		} catch (Exception exception) {
 			this.responses.bridgeLog(plugin, "error", "Cannot load saved configuration: " + ClientPluginResponseHandler.rootMessage(exception));
 		}
-	}
-
-	private ClientTickEvent createTick(Minecraft client) {
-		boolean connected = client.getConnection() != null;
-		String address = connected
-				? String.valueOf(client.getConnection().getConnection().getRemoteAddress())
-				: null;
-		String playerUuid = client.player == null ? null : client.player.getUUID().toString();
-		String playerName = client.player == null ? null : client.player.getName().getString();
-		String dimension = client.level == null ? null : MinecraftVersionAdapter.dimension(client.level);
-		boolean hasPosition = client.player != null;
-		long dayTime = client.level == null ? 0L : MinecraftVersionAdapter.clientDayTime(client.level);
-		return new ClientTickEvent(
-				this.tick, Instant.now().toEpochMilli(), connected, address,
-				playerUuid, playerName, dimension, hasPosition,
-				hasPosition ? client.player.getX() : 0.0,
-				hasPosition ? client.player.getY() : 0.0,
-				hasPosition ? client.player.getZ() : 0.0,
-				dayTime, client.getFps()
-		);
 	}
 
 	private synchronized void handleScreenEvent(LoadedPlugin plugin, ClientScreenEvent event) {

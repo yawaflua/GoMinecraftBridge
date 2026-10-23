@@ -51,7 +51,7 @@ panics are represented in the JSON response rather than the C status.
 | 20 | allow chat | `ChatEvent`; boolean decision in response `data` |
 | 21 | client key | `ClientKeyEvent` JSON |
 | 22 | client chat | `ClientChatEvent` JSON |
-| 23 | client title | `ClientTitleEvent` JSON |
+| 23 | client menu | `ClientMenuEvent` JSON |
 
 Operations 10, 12, and 20 are synchronous decisions. Damage and death decisions
 are Fabric-only; chat decisions are supported by Fabric and Paper. A plugin that
@@ -161,8 +161,13 @@ Client libraries are loaded from
 `config/gbm/client-data/<plugin-id>`. They start even when the connected server
 does not have GBM installed. The client
 tick JSON contains the tick number, connection state, remote address, local
-player UUID/name, and current dimension; world-dependent strings are absent
-outside a world.
+player UUID/name, current dimension and position, day time, FPS, the GUI-scaled
+screen size (`guiWidth`/`guiHeight`), the open screen (`screen.kind` is
+`plugin`, `chat`, `container`, `pause`, `title` or `other`; plugin screens add
+`pluginId`/`screenId`), the crosshair `target` (block ID/position/side or
+entity UUID/type/name/`player`, plus distance), held movement `keys` and the
+local `player` state (health, food, rotation, sneaking/sprinting, main/off-hand
+items). World-dependent values are absent outside a world.
 
 The client runtime accepts local chat, retained HUD, custom retained screens,
 framebuffer-capture actions, and configurable key bindings. Client and `both`
@@ -178,22 +183,53 @@ only during `ScreenCaptured`.
 Received client chat and game messages invoke operation 22 with plain text and
 all click-event values found in the component tree. Client plugins start with
 `Init` at game startup, before any world is open. Operation 23 reports the
-title screen (`{"type":"shown"}`) and main-menu button clicks
-(`{"type":"button","buttonId":"..."}`). `Context.AddTitleButton` declares a
-button rendered under the vanilla TitleScreen entries; clicks are delivered to
-the owning plugin through operation 23, so Go code runs both at startup and in
-the main menu, not only inside a world. A button with `screen: "pause"` is
-added to the pause menu instead; with a non-zero `width` its `x`/`y` are offsets
-from the menu origin (horizontal center, `height/4`), otherwise buttons are
-stacked under the vanilla entries. Click events carry the same `screen` value.
+title screen (`{"type":"shown"}`) and menu button clicks
+(`{"type":"button","buttonId":"...","screen":"title|pause"}`).
+`Context.AddMenuButton` declares a button in the title menu (default) or, with
+`screen: "pause"`, in the pause menu. With a non-zero `width` its `x`/`y` are
+offsets from the menu origin (horizontal center, `height/4`); otherwise buttons
+are stacked under the lowest vanilla button. Clicks are delivered through
+operation 23, so Go code also runs in menus, not only inside a world.
 
-Custom-element screens support `disabled` buttons/selects and `notifyChanges` inputs:
-every edit of a notifying input sends a `ClientScreenEvent` with
-`type: "change"` and `buttonId` set to the input ID. A screen with
-`scroll: true` reports mouse-wheel movement as `type: "scroll"` with
-`reason: "up"` or `"down"`. Reopening a screen with the same ID keeps keyboard
-focus on the same input. HUD elements with `overScreens: true` are drawn above
-any open screen instead of the in-game HUD layer.
+Custom-element screens (`OpenScreen` with `elements`) support these element
+types: `text` (optional `wrap`/`ellipsis` within `width` and `align`),
+`rectangle`, `button`, `hitbox`, `text_input`, `number_input`,
+`password_input`, `select`, `checkbox` (value `true`/`false`), `slider`
+(`min`/`max`/`step`, numeric value), `list` (scrollable `items` with
+`rowHeight`), `item` (item ID and count) and `image` (resource-pack `texture`
+region `u`/`v` of `textureWidth`×`textureHeight`). Elements are drawn after the
+screen background and before widgets. Any element may carry a `tooltip`;
+buttons, selects, inputs and checkboxes may be `disabled`. Operation 14 events
+have these types:
+
+| type | meaning |
+| --- | --- |
+| `button` | button or hitbox pressed; `buttonId` is the element ID |
+| `closed` | screen left; `reason` is `escape`, `programmatic` or `replaced` |
+| `change` | a `notifyChanges` input, select, checkbox or slider changed |
+| `scroll` | wheel over a `scroll: true` screen outside lists; `reason` is `up`/`down` |
+| `select` | list row clicked; `buttonId` is the list ID, `reason` the item ID |
+| `submit` | Enter pressed in an input; `buttonId` is the input ID |
+
+Every event carries current `values` of all inputs, selects, checkboxes,
+sliders and lists. `minecraft:client.screen.update` (`UpdateScreen`) patches an
+open screen: elements replace those with the same ID, unknown IDs are appended
+and `remove` drops IDs. Typed text, cursor, focus and list scroll survive the
+update and window resizes unless the plugin sends a different `value`.
+Reopening a screen with the same ID keeps focus on the same input.
+
+HUD elements are `text`, `rectangle` or `panel`. A panel draws newline-separated
+`text` on a `background` box sized with the real font, with `padding`,
+`lineSpacing` and an optional left `accent` bar. A text element with non-zero
+`width`/`height` is anchored using those sizes instead of its measured bounds.
+`overScreens: true` draws an element above open screens instead of the HUD
+layer; `hideOnScreens: true` hides it while any screen is open.
+
+Further client actions: `minecraft:client.toast` (`ShowToast`, vanilla system
+toast), `minecraft:client.sound.play` (`PlaySound`, UI sound by ID with volume
+and pitch) and `minecraft:client.clipboard.set` (`SetClipboard`).
+`minecraft:client.chat.display` outside a world is shown as a toast instead of
+failing.
 
 Server actions, snapshot subscriptions, and system calls are rejected locally
 and are never forwarded to the connected server. `InitEvent.runtimeEnvironment`

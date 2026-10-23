@@ -11,5 +11,9 @@ interface ClientScreenCallbacks {
 
 	void scrolled(String direction, Map<String, String> values);
 
+	void selected(String listId, String itemId, Map<String, String> values);
+
+	void submitted(String inputId, Map<String, String> values);
+
 	void closed(Map<String, String> values);
 }

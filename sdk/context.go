@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -85,6 +86,19 @@ func (context *Context) OpenClientScreen(screen ClientScreen) string {
 	return context.queueAction("minecraft:client.screen.open", screen)
 }
 
+// UpdateClientScreen patches an open custom-element screen without reopening
+// it: elements replace those with the same ID (unknown IDs are appended) and
+// remove drops elements. Typed input, focus and list scroll are kept unless an
+// element's Value changes.
+func (context *Context) UpdateClientScreen(screenID string, elements []ClientScreenElement, remove ...string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.screen.update", map[string]any{
+		"id": screenID, "elements": elements, "remove": remove,
+	})
+}
+
 // CloseClientScreen closes screenID if it belongs to this plugin and returns
 // its action ID. It returns an empty string in a server runtime.
 func (context *Context) CloseClientScreen(screenID string) string {
@@ -139,30 +153,59 @@ func (context *Context) RemoveHUD(id string) string {
 	})
 }
 
-// AddTitleButton declares a main-menu button for this client plugin and
-// returns its action ID. Clicks arrive through ClientTitleHandler even when
+// AddMenuButton declares a title or pause menu button for this plugin and
+// returns its action ID. Clicks arrive through ClientMenuHandler even when
 // no world is open. It returns an empty string in a server runtime.
-func (context *Context) AddTitleButton(button TitleButton) string {
+func (context *Context) AddMenuButton(button MenuButton) string {
 	if !context.client {
 		return ""
 	}
-	return context.queueAction("minecraft:client.title_button.add", button)
+	return context.queueAction("minecraft:client.menu_button.add", button)
 }
 
-// RemoveTitleButton removes one main-menu button by ID.
-func (context *Context) RemoveTitleButton(id string) string {
+// RemoveMenuButton removes one menu button by ID.
+func (context *Context) RemoveMenuButton(id string) string {
 	if !context.client {
 		return ""
 	}
-	return context.queueAction("minecraft:client.title_button.remove", map[string]any{"id": id})
+	return context.queueAction("minecraft:client.menu_button.remove", map[string]any{"id": id})
 }
 
-// ClearTitleButtons removes every main-menu button owned by this plugin.
-func (context *Context) ClearTitleButtons() string {
+// ClearMenuButtons removes every menu button owned by this plugin.
+func (context *Context) ClearMenuButtons() string {
 	if !context.client {
 		return ""
 	}
-	return context.queueAction("minecraft:client.title_button.clear", map[string]any{})
+	return context.queueAction("minecraft:client.menu_button.clear", map[string]any{})
+}
+
+// ShowToast shows a vanilla system toast. A zero duration uses five seconds.
+func (context *Context) ShowToast(title, description string, duration time.Duration) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.toast", map[string]any{
+		"title": title, "description": description, "durationMillis": duration.Milliseconds(),
+	})
+}
+
+// PlaySound plays a UI sound such as "minecraft:entity.experience_orb.pickup".
+// Zero volume or pitch means 1.
+func (context *Context) PlaySound(sound string, volume, pitch float32) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.sound.play", map[string]any{
+		"sound": sound, "volume": volume, "pitch": pitch,
+	})
+}
+
+// SetClipboard replaces the system clipboard text.
+func (context *Context) SetClipboard(text string) string {
+	if !context.client {
+		return ""
+	}
+	return context.queueAction("minecraft:client.clipboard.set", map[string]any{"text": text})
 }
 
 func (context *Context) queueAction(actionType string, payload any) string {
@@ -174,6 +217,20 @@ func (context *Context) queueAction(actionType string, payload any) string {
 // Named returns a copy with the ID used by RenderHUD and RemoveHUD.
 func (element HUDElement) Named(id string) HUDElement {
 	element.ID = id
+	return element
+}
+
+// HUDPanel creates an auto-sized text box. Lines are joined with newlines.
+func HUDPanel(lines []string, x, y int, textColor, background uint32, anchor HUDAnchor) HUDElement {
+	return HUDElement{
+		Type: "panel", Text: strings.Join(lines, "\n"), X: x, Y: y,
+		Color: textColor, Background: background, Padding: 6, Shadow: true, Anchor: anchor,
+	}
+}
+
+// HiddenOnScreens returns a copy hidden while any screen is open.
+func (element HUDElement) HiddenOnScreens() HUDElement {
+	element.HideOnScreens = true
 	return element
 }
 

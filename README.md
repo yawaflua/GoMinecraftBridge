@@ -500,8 +500,17 @@ Actions are fire-and-forget operations implemented by the bridge:
 - `minecraft:chat.broadcast`;
 - `minecraft:chat.player`;
 - `minecraft:client.chat.display` via `ctx.DisplayMessage(...)` (client runtime only).
-- `minecraft:client.screen.open` and `.close` via the typed screen API;
-- `minecraft:client.screen.capture` via `ctx.CaptureScreen()`.
+- `minecraft:client.screen.open`, `.update` and `.close` via `ctx.OpenScreen`,
+  `ctx.UpdateScreen` and `ctx.CloseScreen`;
+- `minecraft:client.screen.capture` via `ctx.CaptureScreen()`;
+- `minecraft:client.menu_button.add`/`.remove`/`.clear` via `ctx.AddMenuButton(...)`
+  (title or pause menu);
+- `minecraft:client.toast`, `minecraft:client.sound.play` and
+  `minecraft:client.clipboard.set` via `ctx.ShowToast`, `ctx.PlaySound` and
+  `ctx.SetClipboard`.
+
+See `docs/native-abi.md` for screen element types, screen events, HUD panels and
+the client tick fields.
 
 System calls return a result to the plugin's `SystemCallResult` callback. Built-in
 calls currently include:

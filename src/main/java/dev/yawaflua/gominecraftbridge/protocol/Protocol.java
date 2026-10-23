@@ -46,7 +46,7 @@ public final class Protocol {
 		/** Reports a client-local chat or game message. */
 		CLIENT_CHAT(22),
 		/** Reports title-screen lifecycle and main-menu button clicks. */
-		CLIENT_TITLE(23);
+		CLIENT_MENU(23);
 
 		private final int code;
 

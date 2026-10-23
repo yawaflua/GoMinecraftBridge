@@ -6,14 +6,20 @@ import dev.yawaflua.gominecraftbridge.protocol.ClientScreenElement;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenOption;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenSpec;
 
+import dev.yawaflua.gominecraftbridge.protocol.ClientScreenListItem;
+
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 final class ClientScreenSpecValidator {
 	private static final Set<String> FIELD_TYPES = Set.of("text", "number", "password", "select");
 	private static final Set<String> ELEMENT_TYPES = Set.of(
-			"text", "rectangle", "button", "hitbox", "text_input", "number_input", "password_input", "select"
+			"text", "rectangle", "button", "hitbox", "text_input", "number_input", "password_input", "select",
+			"list", "checkbox", "slider", "item", "image"
 	);
+	private static final Set<String> ALIGNMENTS = Set.of("left", "center", "right");
+	static final int MAX_ELEMENTS = 256;
 	private static final Set<String> ANCHORS = Set.of(
 			"top_left", "top_center", "top_right", "center_left", "center", "center_right",
 			"bottom_left", "bottom_center", "bottom_right"
@@ -29,7 +35,7 @@ final class ClientScreenSpecValidator {
 		validateId(screen.id(), "screen");
 		validateText(screen.title(), 256, "Screen title");
 		validateText(screen.body(), 4_096, "Screen body");
-		if (screen.elements().size() > 256 || screen.fields().size() > 32 || screen.buttons().size() > 16) {
+		if (screen.elements().size() > MAX_ELEMENTS || screen.fields().size() > 32 || screen.buttons().size() > 16) {
 			throw new IllegalArgumentException("Screen contains too many fields or buttons");
 		}
 		Set<String> ids = new HashSet<>();
@@ -37,29 +43,9 @@ final class ClientScreenSpecValidator {
 			if (element == null) {
 				throw new IllegalArgumentException("Screen element is missing");
 			}
-			validateId(element.id(), "element");
+			validateElement(element);
 			if (!ids.add(element.id())) {
 				throw new IllegalArgumentException("Duplicate screen component id: " + element.id());
-			}
-			if (!ELEMENT_TYPES.contains(element.type())) {
-				throw new IllegalArgumentException("Unknown screen element type: " + element.type());
-			}
-			if (element.anchor() != null && !element.anchor().isBlank() && !ANCHORS.contains(element.anchor())) {
-				throw new IllegalArgumentException("Unknown screen element anchor: " + element.anchor());
-			}
-			if (Math.abs(element.x()) > 32_768 || Math.abs(element.y()) > 32_768
-					|| element.width() < 0 || element.width() > 32_768
-					|| element.height() < 0 || element.height() > 32_768) {
-				throw new IllegalArgumentException("Screen element bounds are out of range");
-			}
-			validateText(element.text(), 4_096, "Element text");
-			validateText(element.placeholder(), 256, "Element placeholder");
-			validateText(element.value(), 1_024, "Element value");
-			if (element.maxLength() < 0 || element.maxLength() > 1_024 || element.options().size() > 64) {
-				throw new IllegalArgumentException("Screen element input limits are out of range");
-			}
-			if (element.type().equals("select") && element.options().isEmpty()) {
-				throw new IllegalArgumentException("Select element requires options");
 			}
 		}
 		for (ClientScreenField field : screen.fields()) {
@@ -102,6 +88,88 @@ final class ClientScreenSpecValidator {
 				throw new IllegalArgumentException("Duplicate screen component id: " + button.id());
 			}
 			validateText(button.label(), 128, "Button label");
+		}
+	}
+
+	static void validateElements(List<ClientScreenElement> elements) {
+		if (elements.size() > MAX_ELEMENTS) {
+			throw new IllegalArgumentException("Screen contains too many elements");
+		}
+		Set<String> ids = new HashSet<>();
+		for (ClientScreenElement element : elements) {
+			if (element == null) {
+				throw new IllegalArgumentException("Screen element is missing");
+			}
+			validateElement(element);
+			if (!ids.add(element.id())) {
+				throw new IllegalArgumentException("Duplicate screen component id: " + element.id());
+			}
+		}
+	}
+
+	static void validateElement(ClientScreenElement element) {
+		validateId(element.id(), "element");
+		if (!ELEMENT_TYPES.contains(element.type())) {
+			throw new IllegalArgumentException("Unknown screen element type: " + element.type());
+		}
+		if (element.anchor() != null && !element.anchor().isBlank() && !ANCHORS.contains(element.anchor())) {
+			throw new IllegalArgumentException("Unknown screen element anchor: " + element.anchor());
+		}
+		if (element.align() != null && !element.align().isBlank() && !ALIGNMENTS.contains(element.align())) {
+			throw new IllegalArgumentException("Unknown screen text alignment: " + element.align());
+		}
+		if (Math.abs(element.x()) > 32_768 || Math.abs(element.y()) > 32_768
+				|| element.width() < 0 || element.width() > 32_768
+				|| element.height() < 0 || element.height() > 32_768) {
+			throw new IllegalArgumentException("Screen element bounds are out of range");
+		}
+		validateText(element.text(), 4_096, "Element text");
+		validateText(element.placeholder(), 256, "Element placeholder");
+		validateText(element.value(), 1_024, "Element value");
+		validateText(element.tooltip(), 1_024, "Element tooltip");
+		validateText(element.item(), 256, "Element item");
+		validateText(element.texture(), 256, "Element texture");
+		if (element.maxLength() < 0 || element.maxLength() > 1_024 || element.options().size() > 64) {
+			throw new IllegalArgumentException("Screen element input limits are out of range");
+		}
+		switch (element.type()) {
+			case "select" -> {
+				if (element.options().isEmpty()) {
+					throw new IllegalArgumentException("Select element requires options");
+				}
+			}
+			case "list" -> {
+				if (element.items().size() > 1_024 || element.rowHeight() < 0 || element.rowHeight() > 256
+						|| element.width() == 0 || element.height() == 0) {
+					throw new IllegalArgumentException("List element requires a size and at most 1024 items");
+				}
+				Set<String> itemIds = new HashSet<>();
+				for (ClientScreenListItem item : element.items()) {
+					if (item == null || item.id() == null || item.id().isEmpty() || item.id().length() > 128 || !itemIds.add(item.id())) {
+						throw new IllegalArgumentException("List items require unique ids");
+					}
+					validateText(item.text(), 1_024, "List item text");
+					validateText(item.tooltip(), 1_024, "List item tooltip");
+				}
+			}
+			case "slider" -> {
+				if (!(element.max() > element.min()) || element.step() < 0 || !Double.isFinite(element.min()) || !Double.isFinite(element.max())) {
+					throw new IllegalArgumentException("Slider requires min < max and a non-negative step");
+				}
+			}
+			case "item" -> {
+				if (element.item() == null || element.item().isBlank() || element.count() < 0 || element.count() > 999) {
+					throw new IllegalArgumentException("Item element requires an item id and a count up to 999");
+				}
+			}
+			case "image" -> {
+				if (element.texture() == null || element.texture().isBlank() || element.width() == 0 || element.height() == 0
+						|| element.textureWidth() < 0 || element.textureHeight() < 0) {
+					throw new IllegalArgumentException("Image element requires a texture and a size");
+				}
+			}
+			default -> {
+			}
 		}
 	}
 

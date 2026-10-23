@@ -102,11 +102,11 @@ func (clientPlugin) Init(context *client.Context, event sdk.InitEvent) error {
 		"initialized client for Minecraft %s; data=%s; capabilities=%v\n",
 		event.MinecraftVersion, event.DataDirectory, event.Capabilities,
 	)
-	context.AddTitleButton(sdk.TitleButton{ID: "hello-notify", Label: "Hello notification"})
+	context.AddMenuButton(sdk.MenuButton{ID: "hello-notify", Label: "Hello notification"})
 	return nil
 }
 
-func (clientPlugin) Title(context *client.Context, event sdk.ClientTitleEvent) error {
+func (clientPlugin) Menu(context *client.Context, event sdk.ClientMenuEvent) error {
 	if event.Type == "button" && event.ButtonID == "hello-notify" {
 		context.OpenScreen(sdk.ClientScreen{
 			ID:    "hello-notice",

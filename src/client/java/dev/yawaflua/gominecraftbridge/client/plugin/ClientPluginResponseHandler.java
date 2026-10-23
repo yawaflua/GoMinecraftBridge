@@ -9,12 +9,14 @@ import dev.yawaflua.gominecraftbridge.client.ClientHudState;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenCaptureController;
 import dev.yawaflua.gominecraftbridge.client.ClientScreenController;
 import dev.yawaflua.gominecraftbridge.client.ClientSessionJoiner;
-import dev.yawaflua.gominecraftbridge.client.ClientTitleButtons;
+import dev.yawaflua.gominecraftbridge.client.ClientMenuButtons;
+import dev.yawaflua.gominecraftbridge.client.ClientVersionAdapter;
 import dev.yawaflua.gominecraftbridge.client.ClientProtocolInput;
 import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ActionRequest;
 import dev.yawaflua.gominecraftbridge.protocol.ActionResult;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenSpec;
+import dev.yawaflua.gominecraftbridge.protocol.ClientScreenUpdate;
 import dev.yawaflua.gominecraftbridge.protocol.HudElementDto;
 import dev.yawaflua.gominecraftbridge.protocol.HudScene;
 import dev.yawaflua.gominecraftbridge.protocol.PluginLog;
@@ -40,7 +42,7 @@ public final class ClientPluginResponseHandler {
 	private final ClientScreenController screens;
 	private final ClientScreenCaptureController captures;
 	private final ClientPluginConfigStore configs;
-	private final ClientTitleButtons titleButtons;
+	private final ClientMenuButtons menuButtons;
 
 	public ClientPluginResponseHandler(
 			Logger logger,
@@ -48,14 +50,14 @@ public final class ClientPluginResponseHandler {
 			ClientScreenController screens,
 			ClientScreenCaptureController captures,
 			ClientPluginConfigStore configs,
-			ClientTitleButtons titleButtons
+			ClientMenuButtons menuButtons
 	) {
 		this.logger = logger;
 		this.hud = hud;
 		this.screens = screens;
 		this.captures = captures;
 		this.configs = configs;
-		this.titleButtons = titleButtons;
+		this.menuButtons = menuButtons;
 	}
 
 	public void invoke(LoadedPlugin plugin, Protocol.Operation operation, Object input, Minecraft client) {
@@ -131,7 +133,7 @@ public final class ClientPluginResponseHandler {
 		plugin.disable();
 		this.hud.clear(plugin.metadata().id());
 		this.captures.clear(plugin);
-		this.titleButtons.clear(plugin);
+		this.menuButtons.clear(plugin);
 		this.screens.clear(plugin, Minecraft.getInstance());
 		bridgeLog(plugin, "error", "Plugin disabled: " + reason
 				+ (throwable == null ? "" : " — " + rootMessage(throwable)));
@@ -173,6 +175,16 @@ public final class ClientPluginResponseHandler {
 			} catch (RuntimeException exception) {
 				throw new IllegalArgumentException("Rejected malformed client screen", exception);
 			}
+			return;
+		}
+		if ("minecraft:client.screen.update".equals(action.type())) {
+			ClientScreenUpdate update;
+			try {
+				update = ProtocolJson.GSON.fromJson(action.payload(), ClientScreenUpdate.class);
+			} catch (RuntimeException exception) {
+				throw new IllegalArgumentException("Rejected malformed client screen update", exception);
+			}
+			this.screens.update(plugin, update);
 			return;
 		}
 		if ("minecraft:client.screen.close".equals(action.type())) {
@@ -260,8 +272,8 @@ public final class ClientPluginResponseHandler {
 			}
 			return;
 		}
-		if ("minecraft:client.title_button.add".equals(action.type())) {
-			this.titleButtons.add(
+		if ("minecraft:client.menu_button.add".equals(action.type())) {
+			this.menuButtons.add(
 					plugin,
 					requiredString(action.payload(), "id"),
 					requiredString(action.payload(), "label"),
@@ -272,12 +284,34 @@ public final class ClientPluginResponseHandler {
 			);
 			return;
 		}
-		if ("minecraft:client.title_button.remove".equals(action.type())) {
-			this.titleButtons.remove(plugin, requiredString(action.payload(), "id"));
+		if ("minecraft:client.menu_button.remove".equals(action.type())) {
+			this.menuButtons.remove(plugin, requiredString(action.payload(), "id"));
 			return;
 		}
-		if ("minecraft:client.title_button.clear".equals(action.type())) {
-			this.titleButtons.clear(plugin);
+		if ("minecraft:client.menu_button.clear".equals(action.type())) {
+			this.menuButtons.clear(plugin);
+			return;
+		}
+		if ("minecraft:client.toast".equals(action.type())) {
+			String description = optionalString(action.payload(), "description");
+			long duration = (long) optionalNumber(action.payload(), "durationMillis", 5_000);
+			ClientVersionAdapter.toast(client, requiredString(action.payload(), "title"), description,
+					Math.max(500, Math.min(duration, 60_000)));
+			return;
+		}
+		if ("minecraft:client.sound.play".equals(action.type())) {
+			float volume = (float) optionalNumber(action.payload(), "volume", 1.0);
+			float pitch = (float) optionalNumber(action.payload(), "pitch", 1.0);
+			ClientVersionAdapter.playSound(client, requiredString(action.payload(), "sound"),
+					Math.max(0f, Math.min(volume, 4f)), Math.max(0.5f, Math.min(pitch, 2f)));
+			return;
+		}
+		if ("minecraft:client.clipboard.set".equals(action.type())) {
+			String text = optionalString(action.payload(), "text");
+			if (text == null || text.length() > 32_768) {
+				throw new IllegalArgumentException("Clipboard text is missing or longer than 32768 characters");
+			}
+			client.keyboardHandler.setClipboard(text);
 			return;
 		}
 		if (!"minecraft:client.chat.display".equals(action.type())) {
@@ -288,7 +322,8 @@ public final class ClientPluginResponseHandler {
 			throw new IllegalArgumentException("Rejected malformed client chat display action");
 		}
 		if (client.player == null) {
-			throw new IllegalStateException("Cannot display client message outside a world");
+			ClientVersionAdapter.toast(client, plugin.metadata().name(), message.getAsString(), 5_000);
+			return;
 		}
 		ClientChatDisplay.display(client, Component.literal(message.getAsString()));
 	}
@@ -310,6 +345,18 @@ public final class ClientPluginResponseHandler {
 			throw new IllegalArgumentException("Action field must be a string: " + field);
 		}
 		return value.getAsString();
+	}
+
+	private static double optionalNumber(JsonObject payload, String field, double fallback) {
+		JsonElement value = payload == null ? null : payload.get(field);
+		if (value == null || value.isJsonNull()) {
+			return fallback;
+		}
+		if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+			throw new IllegalArgumentException("Action field must be a number: " + field);
+		}
+		double number = value.getAsDouble();
+		return number == 0 ? fallback : number;
 	}
 
 	private static int optionalInt(JsonObject payload, String field) {

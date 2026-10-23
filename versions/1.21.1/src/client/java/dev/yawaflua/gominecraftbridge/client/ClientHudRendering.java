@@ -31,6 +31,13 @@ public final class ClientHudRendering {
 			if (screenPass ? !element.overScreens() : element.overScreens() && screenOpen) {
 				continue;
 			}
+			if (element.hideOnScreens() && screenOpen) {
+				continue;
+			}
+			if ("panel".equals(element.type())) {
+				renderPanel(graphics, font, element);
+				continue;
+			}
 			boolean text = "text".equals(element.type());
 			int width = text && element.width() == 0 ? font.width(element.text()) : element.width();
 			int height = text && element.height() == 0 ? font.lineHeight : element.height();
@@ -47,6 +54,22 @@ public final class ClientHudRendering {
 				default -> {
 				}
 			}
+		}
+	}
+
+	private static void renderPanel(GuiGraphics graphics, Font font, HudElementDto element) {
+		ClientHudPanel panel = ClientHudPanel.layout(element, font, graphics.guiWidth(), graphics.guiHeight());
+		if (element.background() != 0) {
+			graphics.fill(panel.x(), panel.y(), panel.x() + panel.width(), panel.y() + panel.height(), (int) element.background());
+		}
+		if (element.accent() != 0) {
+			int top = panel.y() + element.padding();
+			int left = panel.x() + element.padding();
+			graphics.fill(left, top, left + ClientHudPanel.ACCENT_WIDTH, panel.y() + panel.height() - element.padding(), (int) element.accent());
+		}
+		int color = element.color() == 0 ? 0xffffffff : (int) element.color();
+		for (int index = 0; index < panel.lines().size(); index++) {
+			graphics.drawString(font, panel.lines().get(index), panel.textX(), panel.textY() + index * panel.lineStep(), color, element.shadow());
 		}
 	}
 }

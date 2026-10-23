@@ -1,6 +1,10 @@
 package client
 
-import "github.com/yawaflua/GoMinecraftBridge/sdk"
+import (
+	"time"
+
+	"github.com/yawaflua/GoMinecraftBridge/sdk"
+)
 
 type Context struct {
 	runtime *sdk.Context
@@ -46,6 +50,10 @@ func (context *Context) OpenScreen(screen sdk.ClientScreen) string {
 	return context.runtime.OpenClientScreen(screen)
 }
 
+func (context *Context) UpdateScreen(screenID string, elements []sdk.ClientScreenElement, remove ...string) string {
+	return context.runtime.UpdateClientScreen(screenID, elements, remove...)
+}
+
 func (context *Context) CloseScreen(screenID string) string {
 	return context.runtime.CloseClientScreen(screenID)
 }
@@ -54,16 +62,28 @@ func (context *Context) CaptureScreen() string {
 	return context.runtime.CaptureClientScreen()
 }
 
-func (context *Context) AddTitleButton(button sdk.TitleButton) string {
-	return context.runtime.AddTitleButton(button)
+func (context *Context) AddMenuButton(button sdk.MenuButton) string {
+	return context.runtime.AddMenuButton(button)
 }
 
-func (context *Context) RemoveTitleButton(id string) string {
-	return context.runtime.RemoveTitleButton(id)
+func (context *Context) RemoveMenuButton(id string) string {
+	return context.runtime.RemoveMenuButton(id)
 }
 
-func (context *Context) ClearTitleButtons() string {
-	return context.runtime.ClearTitleButtons()
+func (context *Context) ClearMenuButtons() string {
+	return context.runtime.ClearMenuButtons()
+}
+
+func (context *Context) ShowToast(title, description string, duration time.Duration) string {
+	return context.runtime.ShowToast(title, description, duration)
+}
+
+func (context *Context) PlaySound(sound string, volume, pitch float32) string {
+	return context.runtime.PlaySound(sound, volume, pitch)
+}
+
+func (context *Context) SetClipboard(text string) string {
+	return context.runtime.SetClipboard(text)
 }
 
 func (context *Context) Log(level, message string) {

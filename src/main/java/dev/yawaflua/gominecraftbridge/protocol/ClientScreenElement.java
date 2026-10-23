@@ -19,9 +19,26 @@ public record ClientScreenElement(
 		String anchor,
 		boolean close,
 		boolean disabled,
-		boolean notifyChanges
+		boolean notifyChanges,
+		String tooltip,
+		boolean wrap,
+		boolean ellipsis,
+		String align,
+		List<ClientScreenListItem> items,
+		int rowHeight,
+		double min,
+		double max,
+		double step,
+		String item,
+		int count,
+		String texture,
+		int textureWidth,
+		int textureHeight,
+		int u,
+		int v
 ) {
 	public ClientScreenElement {
 		options = options == null ? List.of() : List.copyOf(options);
+		items = items == null ? List.of() : List.copyOf(items);
 	}
 }

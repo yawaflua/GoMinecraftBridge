@@ -33,9 +33,9 @@ public final class GoMinecraftBridgeClient implements ClientModInitializer {
 			ScreenEvents.AFTER_INIT.register((current, screen, width, height) -> {
 				if (screen instanceof TitleScreen) {
 					RUNTIME.titleShown(current);
-					addMenuButtons(screen, ClientTitleButtons.TITLE, width, height / 4 + 48);
+					addMenuButtons(screen, ClientMenuButtons.TITLE, width);
 				} else if (screen instanceof PauseScreen) {
-					addMenuButtons(screen, ClientTitleButtons.PAUSE, width, height / 4 + 176);
+					addMenuButtons(screen, ClientMenuButtons.PAUSE, width);
 				}
 			});
 		} catch (Exception e) {
@@ -45,14 +45,14 @@ public final class GoMinecraftBridgeClient implements ClientModInitializer {
 		}
 	}
 
-	private static void addMenuButtons(Screen screen, String menu, int width, int stackY) {
+	private static void addMenuButtons(Screen screen, String menu, int width) {
 		int originY = screen.height / 4;
-		int y = stackY;
-		for (ClientTitleButtons.Entry entry : RUNTIME.titleButtons().snapshot(menu)) {
+		int y = ClientScreenWidgets.bottomOfCenteredButtons(screen, originY + 48) + 4;
+		for (ClientMenuButtons.Entry entry : RUNTIME.menuButtons().snapshot(menu)) {
 			var owner = entry.plugin();
 			String buttonId = entry.id();
 			Button.Builder builder = Button.builder(Component.literal(entry.label()), clicked ->
-					RUNTIME.titleButtonClicked(owner, buttonId, menu, Minecraft.getInstance())
+					RUNTIME.menuButtonClicked(owner, buttonId, menu, Minecraft.getInstance())
 			);
 			if (entry.positioned()) {
 				builder.bounds(width / 2 + entry.x(), originY + entry.y(), entry.width(), 20);

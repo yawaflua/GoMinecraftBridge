@@ -1,180 +1,26 @@
 package dev.yawaflua.gominecraftbridge.client;
 
-import dev.yawaflua.gominecraftbridge.protocol.ClientScreenButton;
-import dev.yawaflua.gominecraftbridge.protocol.ClientScreenField;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenElement;
-import dev.yawaflua.gominecraftbridge.protocol.ClientScreenOption;
+import dev.yawaflua.gominecraftbridge.protocol.ClientScreenField;
+import dev.yawaflua.gominecraftbridge.protocol.ClientScreenListItem;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenSpec;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.item.ItemStack;
+import org.lwjgl.glfw.GLFW;
 
-import java.util.LinkedHashMap;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
-final class ClientFormScreen extends Screen {
-	private static final int WIDTH = 300;
-	private final Screen parent;
-	private final ClientScreenSpec spec;
-	private final ClientScreenCallbacks callbacks;
-	private final String initialFocusId;
-	private final Map<String, EditBox> edits = new LinkedHashMap<>();
-	private final Map<String, SelectValue> selects = new LinkedHashMap<>();
-	private final Map<AbstractWidget, Integer> positions = new LinkedHashMap<>();
-	private final List<ClientScreenElement> hitboxes = new ArrayList<>();
-	private int scroll;
-	private int contentHeight;
-
+final class ClientFormScreen extends ClientFormScreenBase {
 	ClientFormScreen(Screen parent, ClientScreenSpec spec, ClientScreenCallbacks callbacks, String initialFocusId) {
-		super(Component.literal(spec.title() == null ? "" : spec.title()));
-		this.parent = parent;
-		this.spec = spec;
-		this.callbacks = callbacks;
-		this.initialFocusId = initialFocusId;
-	}
-
-	String screenId() {
-		return this.spec.id();
-	}
-
-	Map<String, String> values() {
-		Map<String, String> values = new LinkedHashMap<>();
-		this.edits.forEach((id, edit) -> values.put(id, edit.getValue()));
-		this.selects.forEach((id, select) -> values.put(id, select.value()));
-		return Map.copyOf(values);
-	}
-
-	String focusedInputId() {
-		for (Map.Entry<String, EditBox> entry : this.edits.entrySet()) {
-			if (entry.getValue() == this.getFocused()) {
-				return entry.getKey();
-			}
-		}
-		return null;
+		super(parent, spec, callbacks, initialFocusId);
 	}
 
 	@Override
-	protected void setInitialFocus() {
-		EditBox edit = this.initialFocusId == null ? null : this.edits.get(this.initialFocusId);
-		if (edit == null) {
-			super.setInitialFocus();
-			return;
-		}
-		this.setInitialFocus(edit);
-	}
-
-	@Override
-	protected void init() {
-		this.edits.clear();
-		this.selects.clear();
-		this.positions.clear();
-		this.hitboxes.clear();
-		if (!this.spec.elements().isEmpty()) {
-			initCustomElements();
-			return;
-		}
-		int x = this.width / 2 - WIDTH / 2;
-		int y = 72;
-		for (ClientScreenField field : this.spec.fields()) {
-			if ("select".equals(field.type())) {
-				SelectValue select = new SelectValue(field.options(), field.value());
-				Button button = Button.builder(Component.literal(select.label()), ignored -> {
-					select.next();
-					ignored.setMessage(Component.literal(select.label()));
-				}).bounds(x, y, WIDTH, 20).build();
-				this.selects.put(field.id(), select);
-				addPositioned(button, y);
-			} else {
-				EditBox edit = new EditBox(this.font, x, y, WIDTH, 20, Component.literal(field.label()));
-				edit.setMaxLength(field.maxLength() == 0 ? 1_024 : field.maxLength());
-				edit.setValue(field.value() == null ? "" : field.value());
-				if (field.placeholder() != null) {
-					edit.setHint(Component.literal(field.placeholder()));
-				}
-				if ("number".equals(field.type())) {
-					edit.setFilter(value -> value.isEmpty() || value.matches("-?\\d*"));
-				}
-				if ("password".equals(field.type())) {
-					edit.setFormatter((value, offset) -> FormattedCharSequence.forward("*".repeat(value.length()), Style.EMPTY));
-				}
-				this.edits.put(field.id(), edit);
-				addPositioned(edit, y);
-			}
-			y += 40;
-		}
-		for (ClientScreenButton definition : this.spec.buttons()) {
-			Button button = Button.builder(Component.literal(definition.label()), ignored ->
-					this.callbacks.button(definition, values())
-			).bounds(x, y, WIDTH, 20).build();
-			addPositioned(button, y);
-			y += 24;
-		}
-		this.contentHeight = y;
-		updatePositions();
-	}
-
-	private void initCustomElements() {
-		for (ClientScreenElement element : this.spec.elements()) {
-			int width = element.width() == 0 ? 150 : element.width();
-			int height = element.height() == 0 ? 20 : element.height();
-			var position = ClientHudLayout.position(
-					element.anchor(), element.x(), element.y(), width, height, this.width, this.height
-			);
-				switch (element.type()) {
-				case "hitbox" -> this.hitboxes.add(element);
-				case "button" -> {
-					Button button = Button.builder(
-							Component.literal(element.text() == null ? "" : element.text()),
-							ignored -> this.callbacks.button(
-									new ClientScreenButton(element.id(), element.text(), element.close()), values()
-							)
-					).bounds(position.x(), position.y(), width, height).build();
-					button.active = !element.disabled();
-					this.addRenderableWidget(button);
-				}
-				case "text_input", "number_input", "password_input" -> {
-					EditBox edit = new EditBox(
-							this.font, position.x(), position.y(), width, height,
-							Component.literal(element.text() == null ? element.id() : element.text())
-					);
-					edit.setMaxLength(element.maxLength() == 0 ? 1_024 : element.maxLength());
-					edit.setValue(element.value() == null ? "" : element.value());
-					if (element.placeholder() != null) {
-						edit.setHint(Component.literal(element.placeholder()));
-					}
-					if ("number_input".equals(element.type())) {
-						edit.setFilter(value -> value.isEmpty() || value.matches("-?\\d*"));
-					}
-					if ("password_input".equals(element.type())) {
-						edit.setFormatter((value, offset) -> FormattedCharSequence.forward("*".repeat(value.length()), Style.EMPTY));
-					}
-					if (element.notifyChanges()) {
-						edit.setResponder(ignored -> this.callbacks.changed(element.id(), values()));
-					}
-					this.edits.put(element.id(), edit);
-					this.addRenderableWidget(edit);
-				}
-				case "select" -> {
-					SelectValue select = new SelectValue(element.options(), element.value());
-					Button button = Button.builder(Component.literal(select.label()), ignored -> {
-						select.next();
-						ignored.setMessage(Component.literal(select.label()));
-					}).bounds(position.x(), position.y(), width, height).build();
-					button.active = !element.disabled();
-					this.selects.put(element.id(), select);
-					this.addRenderableWidget(button);
-				}
-				default -> {
-				}
-			}
-		}
+	protected void maskPassword(EditBox edit) {
+		edit.setFormatter((value, offset) -> FormattedCharSequence.forward("*".repeat(value.length()), Style.EMPTY));
 	}
 
 	@Override
@@ -182,40 +28,13 @@ final class ClientFormScreen extends Screen {
 		if (super.mouseClicked(mouseX, mouseY, button)) {
 			return true;
 		}
-		for (int index = this.hitboxes.size() - 1; index >= 0; index--) {
-			ClientScreenElement element = this.hitboxes.get(index);
-			var position = ClientHudLayout.position(
-					element.anchor(), element.x(), element.y(), element.width(), element.height(), this.width, this.height
-			);
-			if (mouseX >= position.x() && mouseX < position.x() + element.width()
-					&& mouseY >= position.y() && mouseY < position.y() + element.height()) {
-				this.callbacks.button(new ClientScreenButton(element.id(), element.text(), element.close()), values());
-				return true;
-			}
-		}
-		return false;
-	}
-
-	private void addPositioned(AbstractWidget widget, int y) {
-		this.positions.put(widget, y);
-		this.addRenderableWidget(widget);
-	}
-
-	private void updatePositions() {
-		int maximum = Math.max(0, this.contentHeight - (this.height - 32));
-		this.scroll = Math.max(0, Math.min(this.scroll, maximum));
-		for (Map.Entry<AbstractWidget, Integer> entry : this.positions.entrySet()) {
-			int y = entry.getValue() - this.scroll;
-			entry.getKey().setY(y);
-			entry.getKey().visible = y >= 54 && y <= this.height - 26;
-		}
+		return customLayout() && clickCustom(mouseX, mouseY);
 	}
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
-		if (vertical != 0 && this.spec.scroll() && !this.spec.elements().isEmpty()) {
-			this.callbacks.scrolled(vertical > 0 ? "up" : "down", values());
-			return true;
+		if (vertical != 0 && customLayout()) {
+			return scrollCustom(mouseX, mouseY, vertical) || super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
 		}
 		if (vertical != 0) {
 			this.scroll -= (int) Math.signum(vertical) * 24;
@@ -226,77 +45,119 @@ final class ClientFormScreen extends Screen {
 	}
 
 	@Override
-	public void onClose() {
-		this.callbacks.closed(values());
+	public boolean keyPressed(int key, int scanCode, int modifiers) {
+		if (isEnter(key) && customLayout() && submitFocused()) {
+			return true;
+		}
+		return super.keyPressed(key, scanCode, modifiers);
+	}
+
+	private static boolean isEnter(int key) {
+		return key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER;
+	}
+
+	@Override
+	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+		super.renderBackground(graphics, mouseX, mouseY, delta);
+		if (customLayout()) {
+			renderCustomElements(graphics, mouseX, mouseY);
+		}
 	}
 
 	@Override
 	public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-		if (!this.spec.elements().isEmpty()) {
-			renderCustomElements(graphics);
-			super.render(graphics, mouseX, mouseY, delta);
+		super.render(graphics, mouseX, mouseY, delta);
+		if (customLayout()) {
+			String tooltip = hoveredTooltip(mouseX, mouseY);
+			if (tooltip != null) {
+				graphics.renderTooltip(this.font, Component.literal(tooltip), mouseX, mouseY);
+			}
 			return;
 		}
-		super.render(graphics, mouseX, mouseY, delta);
-		graphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xffffff);
+		graphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xffffffff);
 		if (this.spec.body() != null && !this.spec.body().isBlank()) {
-			graphics.drawCenteredString(this.font, this.spec.body(), this.width / 2, 38, 0xbfbfbf);
+			graphics.drawCenteredString(this.font, this.spec.body(), this.width / 2, 38, 0xffbfbfbf);
 		}
 		int index = 0;
 		for (ClientScreenField field : this.spec.fields()) {
 			int y = 60 + index * 40 - this.scroll;
 			if (y >= 48 && y < this.height - 30) {
-				graphics.drawString(this.font, field.label(), this.width / 2 - WIDTH / 2, y, 0xd0d0d0, false);
+				graphics.drawString(this.font, field.label(), this.width / 2 - WIDTH / 2, y, 0xffd0d0d0, false);
 			}
 			index++;
 		}
 	}
 
-	private void renderCustomElements(GuiGraphics graphics) {
-		for (ClientScreenElement element : this.spec.elements()) {
-			if (!element.type().equals("text") && !element.type().equals("rectangle")) {
-				continue;
-			}
-			int width = element.type().equals("text")
-					? (element.width() == 0 ? this.font.width(element.text() == null ? "" : element.text()) : element.width())
-					: element.width();
-			int height = element.height() == 0 ? this.font.lineHeight : element.height();
-			var position = ClientHudLayout.position(
-					element.anchor(), element.x(), element.y(), width, height, this.width, this.height
-			);
-			if (element.type().equals("rectangle")) {
-				graphics.fill(position.x(), position.y(), position.x() + width, position.y() + height, (int) element.color());
-			} else {
-				int color = element.color() == 0 ? 0xffffffff : (int) element.color();
-				graphics.drawString(this.font, element.text() == null ? "" : element.text(), position.x(), position.y(), color, element.shadow());
+	private void renderCustomElements(GuiGraphics graphics, int mouseX, int mouseY) {
+		for (ClientScreenElement element : this.elements) {
+			switch (element.type()) {
+				case "rectangle" -> {
+					Bounds bounds = bounds(element);
+					graphics.fill(bounds.x(), bounds.y(), bounds.x() + bounds.width(), bounds.y() + bounds.height(), (int) element.color());
+				}
+				case "text" -> {
+					int color = color(element.color(), 0xffffffff);
+					for (TextLine line : textLines(element)) {
+						graphics.drawString(this.font, line.text(), line.x(), line.y(), color, element.shadow());
+					}
+				}
+				case "item" -> {
+					Bounds bounds = bounds(element);
+					ItemStack stack = ClientVersionAdapter.itemStack(element.item(), element.count());
+					graphics.renderItem(stack, bounds.x(), bounds.y());
+					graphics.renderItemDecorations(this.font, stack, bounds.x(), bounds.y());
+				}
+				case "image" -> {
+					Bounds bounds = bounds(element);
+					int textureWidth = element.textureWidth() == 0 ? bounds.width() : element.textureWidth();
+					int textureHeight = element.textureHeight() == 0 ? bounds.height() : element.textureHeight();
+					graphics.blit(ClientVersionAdapter.parse(element.texture()), bounds.x(), bounds.y(),
+							(float) element.u(), (float) element.v(), bounds.width(), bounds.height(), textureWidth, textureHeight);
+				}
+				case "list" -> renderList(graphics, this.lists.get(element.id()), mouseX, mouseY);
+				default -> {
+				}
 			}
 		}
 	}
 
-	private static final class SelectValue {
-		private final List<ClientScreenOption> options;
-		private int index;
-
-		private SelectValue(List<ClientScreenOption> options, String initial) {
-			this.options = options;
-			for (int i = 0; i < options.size(); i++) {
-				if (options.get(i).value().equals(initial)) {
-					this.index = i;
-					break;
-				}
+	private void renderList(GuiGraphics graphics, ListState list, int mouseX, int mouseY) {
+		if (list == null) {
+			return;
+		}
+		Bounds bounds = bounds(list.element);
+		int right = bounds.x() + bounds.width();
+		int bottom = bounds.y() + bounds.height();
+		graphics.fill(bounds.x(), bounds.y(), right, bottom, 0x80000000);
+		graphics.enableScissor(bounds.x(), bounds.y(), right, bottom);
+		int rowHeight = list.rowHeight();
+		int y = bounds.y();
+		int hovered = bounds.contains(mouseX, mouseY) ? list.rowAt(bounds, mouseY) : -1;
+		int row = list.scroll;
+		for (ClientScreenListItem item : list.visibleItems(bounds)) {
+			if (item.id().equals(list.selected)) {
+				graphics.fill(bounds.x(), y, right, y + rowHeight, 0x80ffffff);
+			} else if (row == hovered && !list.element.disabled()) {
+				graphics.fill(bounds.x(), y, right, y + rowHeight, 0x40ffffff);
 			}
+			String text = item.text() == null ? "" : item.text();
+			int textWidth = bounds.width() - 8;
+			if (this.font.width(text) > textWidth) {
+				text = this.font.plainSubstrByWidth(text, Math.max(0, textWidth - this.font.width("…"))) + "…";
+			}
+			int textY = y + (rowHeight - this.font.lineHeight) / 2 + 1;
+			graphics.drawString(this.font, text, bounds.x() + 4, textY, color(item.color(), color(list.element.color(), 0xffffffff)), true);
+			y += rowHeight;
+			row++;
 		}
-
-		private void next() {
-			this.index = (this.index + 1) % this.options.size();
-		}
-
-		private String label() {
-			return this.options.get(this.index).label();
-		}
-
-		private String value() {
-			return this.options.get(this.index).value();
+		graphics.disableScissor();
+		int maxScroll = list.maxScroll(bounds);
+		if (maxScroll > 0) {
+			int track = bounds.height();
+			int thumb = Math.max(8, track * list.visibleRows(bounds) / list.element.items().size());
+			int thumbY = bounds.y() + (track - thumb) * list.scroll / maxScroll;
+			graphics.fill(right - 3, bounds.y(), right, bottom, 0x60000000);
+			graphics.fill(right - 3, thumbY, right, thumbY + thumb, 0xffa0a0a0);
 		}
 	}
 }

@@ -30,8 +30,8 @@ type ScreenCaptureHandler interface {
 	ScreenCaptured(context *Context, capture sdk.ClientScreenCapture) error
 }
 
-type TitleHandler interface {
-	Title(context *Context, event sdk.ClientTitleEvent) error
+type MenuHandler interface {
+	Menu(context *Context, event sdk.ClientMenuEvent) error
 }
 
 type InteractionHandler interface {
@@ -124,9 +124,9 @@ func (adapter *adapter) ClientScreenCaptured(context *sdk.Context, capture sdk.C
 	return nil
 }
 
-func (adapter *adapter) ClientTitle(context *sdk.Context, event sdk.ClientTitleEvent) error {
-	if handler, ok := adapter.plugin.(TitleHandler); ok {
-		return handler.Title(wrapContext(context), event)
+func (adapter *adapter) ClientMenu(context *sdk.Context, event sdk.ClientMenuEvent) error {
+	if handler, ok := adapter.plugin.(MenuHandler); ok {
+		return handler.Menu(wrapContext(context), event)
 	}
 	return nil
 }

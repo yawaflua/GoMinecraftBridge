@@ -119,6 +119,18 @@ public final class ClientHudState {
 					throw new IllegalArgumentException("HUD text is missing or too long");
 				}
 			}
+			case "panel" -> {
+				if (element.text() == null || element.text().length() > MAX_TEXT_LENGTH) {
+					throw new IllegalArgumentException("HUD panel text is missing or too long");
+				}
+				if (element.padding() < 0 || element.padding() > 64 || element.lineSpacing() < 0 || element.lineSpacing() > 64) {
+					throw new IllegalArgumentException("HUD panel spacing is out of range");
+				}
+				if (element.background() < 0 || element.background() > 0xffff_ffffL
+						|| element.accent() < 0 || element.accent() > 0xffff_ffffL) {
+					throw new IllegalArgumentException("HUD panel colors must be unsigned 32-bit ARGB values");
+				}
+			}
 			case "rectangle" -> {
 				if (element.width() < 0 || element.height() < 0
 						|| element.width() > MAX_COORDINATE || element.height() > MAX_COORDINATE) {

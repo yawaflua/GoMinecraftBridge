@@ -45,8 +45,11 @@ public final class BridgeCapabilities {
 			"minecraft:client.browser.open",
 			"minecraft:client.session.join",
 			"minecraft:client.config.save",
-			"minecraft:event.client_title",
-			"minecraft:client.title_button"
+			"minecraft:event.client_menu",
+			"minecraft:client.menu_button",
+			"minecraft:client.toast",
+			"minecraft:client.sound.play",
+			"minecraft:client.clipboard.set"
 	);
 
 	private BridgeCapabilities() {

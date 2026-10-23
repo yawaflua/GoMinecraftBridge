@@ -4,6 +4,7 @@ import dev.yawaflua.gominecraftbridge.host.LoadedPlugin;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenButton;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenEvent;
 import dev.yawaflua.gominecraftbridge.protocol.ClientScreenSpec;
+import dev.yawaflua.gominecraftbridge.protocol.ClientScreenUpdate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
@@ -37,6 +38,13 @@ public final class ClientScreenController {
 		client.setScreen(next);
 	}
 
+	public void update(LoadedPlugin plugin, ClientScreenUpdate update) {
+		if (update == null || this.owner != plugin || this.active == null || !this.active.screenId().equals(update.id())) {
+			throw new IllegalStateException("Screen is not open: " + (update == null ? null : update.id()));
+		}
+		this.active.update(update.elements(), update.remove());
+	}
+
 	public void close(LoadedPlugin plugin, String screenId, Minecraft client, boolean notify) {
 		if (this.owner != plugin || this.active == null || !this.active.screenId().equals(screenId)) {
 			return;
@@ -48,6 +56,10 @@ public final class ClientScreenController {
 		if (notify) {
 			this.events.accept(plugin, new ClientScreenEvent(screenId, "closed", null, "programmatic", values));
 		}
+	}
+
+	String activePluginId() {
+		return this.owner == null ? null : this.owner.metadata().id();
 	}
 
 	public void tick(Minecraft client) {
@@ -112,6 +124,20 @@ public final class ClientScreenController {
 		public void scrolled(String direction, Map<String, String> values) {
 			ClientScreenController.this.events.accept(this.plugin, new ClientScreenEvent(
 					this.screenId, "scroll", null, direction, values
+			));
+		}
+
+		@Override
+		public void selected(String listId, String itemId, Map<String, String> values) {
+			ClientScreenController.this.events.accept(this.plugin, new ClientScreenEvent(
+					this.screenId, "select", listId, itemId, values
+			));
+		}
+
+		@Override
+		public void submitted(String inputId, Map<String, String> values) {
+			ClientScreenController.this.events.accept(this.plugin, new ClientScreenEvent(
+					this.screenId, "submit", inputId, null, values
 			));
 		}
 

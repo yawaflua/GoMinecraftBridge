@@ -11,4 +11,15 @@ final class ClientScreenWidgets {
 	static void add(Screen screen, AbstractWidget widget) {
 		Screens.getButtons(screen).add(widget);
 	}
+
+	static int bottomOfCenteredButtons(Screen screen, int fallback) {
+		int bottom = -1;
+		for (AbstractWidget widget : Screens.getButtons(screen)) {
+			int center = widget.getX() + widget.getWidth() / 2;
+			if (widget.visible && widget.getHeight() == 20 && Math.abs(center - screen.width / 2) <= 110) {
+				bottom = Math.max(bottom, widget.getY() + widget.getHeight());
+			}
+		}
+		return bottom < 0 ? fallback : bottom;
+	}
 }

@@ -27,7 +27,7 @@ const (
 	OperationAllowChat           = 20
 	OperationClientKey           = 21
 	OperationClientChat          = 22
-	OperationClientTitle         = 23
+	OperationClientMenu          = 23
 )
 
 // PluginEnvironment declares which Minecraft process may execute a plugin.
@@ -110,8 +110,11 @@ const (
 	CapabilityClientScreen          Capability = "minecraft:client.screen"
 	CapabilityClientScreenCapture   Capability = "minecraft:client.screen.capture"
 	CapabilityClientChatEvent       Capability = "minecraft:event.client_chat"
-	CapabilityClientTitle           Capability = "minecraft:event.client_title"
-	CapabilityClientTitleButton     Capability = "minecraft:client.title_button"
+	CapabilityClientMenu            Capability = "minecraft:event.client_menu"
+	CapabilityClientMenuButton      Capability = "minecraft:client.menu_button"
+	CapabilityClientToast           Capability = "minecraft:client.toast"
+	CapabilityClientSound           Capability = "minecraft:client.sound.play"
+	CapabilityClientClipboard       Capability = "minecraft:client.clipboard.set"
 	CapabilityClientBrowser         Capability = "minecraft:client.browser.open"
 	CapabilityClientSessionJoin     Capability = "minecraft:client.session.join"
 	CapabilityClientConfigSave      Capability = "minecraft:client.config.save"
@@ -133,6 +136,74 @@ type ClientTickEvent struct {
 	Z                  float64 `json:"z"`
 	DayTime            int64   `json:"dayTime"`
 	FPS                int     `json:"fps"`
+	// GUIWidth and GUIHeight are the scaled screen size used by HUD and
+	// screen element coordinates.
+	GUIWidth  int                `json:"guiWidth"`
+	GUIHeight int                `json:"guiHeight"`
+	Screen    *ClientScreenState `json:"screen,omitempty"`
+	Target    *ClientTarget      `json:"target,omitempty"`
+	Keys      ClientMovementKeys `json:"keys"`
+	Player    *ClientPlayerState `json:"player,omitempty"`
+}
+
+// ClientScreenState describes the open screen. Kind is one of "plugin",
+// "chat", "container", "pause", "title" or "other"; plugin screens also carry
+// the owning plugin and screen IDs.
+type ClientScreenState struct {
+	Kind     string `json:"kind"`
+	PluginID string `json:"pluginId,omitempty"`
+	ScreenID string `json:"screenId,omitempty"`
+}
+
+// ClientTarget is what the crosshair points at. Type is "block" or "entity".
+type ClientTarget struct {
+	Type       string  `json:"type"`
+	Distance   float64 `json:"distance"`
+	X          float64 `json:"x"`
+	Y          float64 `json:"y"`
+	Z          float64 `json:"z"`
+	BlockX     int     `json:"blockX,omitempty"`
+	BlockY     int     `json:"blockY,omitempty"`
+	BlockZ     int     `json:"blockZ,omitempty"`
+	BlockID    string  `json:"blockId,omitempty"`
+	Side       string  `json:"side,omitempty"`
+	EntityUUID string  `json:"entityUuid,omitempty"`
+	EntityType string  `json:"entityType,omitempty"`
+	Name       string  `json:"name,omitempty"`
+	Player     bool    `json:"player,omitempty"`
+}
+
+// ClientMovementKeys reports which gameplay key mappings are held down.
+type ClientMovementKeys struct {
+	Forward bool `json:"forward"`
+	Back    bool `json:"back"`
+	Left    bool `json:"left"`
+	Right   bool `json:"right"`
+	Jump    bool `json:"jump"`
+	Sneak   bool `json:"sneak"`
+	Sprint  bool `json:"sprint"`
+	Attack  bool `json:"attack"`
+	Use     bool `json:"use"`
+}
+
+// ClientPlayerState is the local player's vital state.
+type ClientPlayerState struct {
+	Health    float32    `json:"health"`
+	MaxHealth float32    `json:"maxHealth"`
+	Food      int        `json:"food"`
+	Yaw       float32    `json:"yaw"`
+	Pitch     float32    `json:"pitch"`
+	Sneaking  bool       `json:"sneaking"`
+	Sprinting bool       `json:"sprinting"`
+	MainHand  ClientItem `json:"mainHand"`
+	OffHand   ClientItem `json:"offHand"`
+}
+
+// ClientItem describes an item stack; an empty stack has an empty ID.
+type ClientItem struct {
+	ID    string `json:"id,omitempty"`
+	Count int    `json:"count,omitempty"`
+	Name  string `json:"name,omitempty"`
 }
 
 type ClientChatEvent struct {
@@ -140,17 +211,17 @@ type ClientChatEvent struct {
 	ClickValues []string `json:"clickValues"`
 }
 
-// ClientTitleEvent reports title-screen lifecycle ("shown") or a menu button
-// press ("button"). Buttons are declared with Context.AddTitleButton; Screen
+// ClientMenuEvent reports title-screen lifecycle ("shown") or a menu button
+// press ("button"). Buttons are declared with Context.AddMenuButton; Screen
 // names the menu that contained the pressed button.
-type ClientTitleEvent struct {
+type ClientMenuEvent struct {
 	Type               string     `json:"type"`
 	ButtonID           string     `json:"buttonId,omitempty"`
 	Screen             MenuScreen `json:"screen,omitempty"`
 	TimestampUnixMilli int64      `json:"timestampUnixMilli"`
 }
 
-// MenuScreen selects the vanilla menu that receives a TitleButton.
+// MenuScreen selects the vanilla menu that receives a MenuButton.
 type MenuScreen string
 
 const (
@@ -158,10 +229,10 @@ const (
 	MenuScreenPause MenuScreen = "pause"
 )
 
-// TitleButton declares one menu button owned by a client plugin. Without a
+// MenuButton declares one menu button owned by a client plugin. Without a
 // Width, buttons are stacked under the vanilla entries. With a Width, X and Y
 // are offsets from the vanilla menu origin (horizontal center, height/4).
-type TitleButton struct {
+type MenuButton struct {
 	ID     string     `json:"id"`
 	Label  string     `json:"label"`
 	Screen MenuScreen `json:"screen,omitempty"`
@@ -421,6 +492,11 @@ const (
 	ClientScreenElementNumberInput   ClientScreenElementType = "number_input"
 	ClientScreenElementPasswordInput ClientScreenElementType = "password_input"
 	ClientScreenElementSelect        ClientScreenElementType = "select"
+	ClientScreenElementList          ClientScreenElementType = "list"
+	ClientScreenElementCheckbox      ClientScreenElementType = "checkbox"
+	ClientScreenElementSlider        ClientScreenElementType = "slider"
+	ClientScreenElementItem          ClientScreenElementType = "item"
+	ClientScreenElementImage         ClientScreenElementType = "image"
 )
 
 // ClientScreenElement is an arbitrarily positioned custom-screen primitive.
@@ -448,6 +524,42 @@ type ClientScreenElement struct {
 	Close       bool                    `json:"close,omitempty"`
 	Disabled    bool                    `json:"disabled,omitempty"`
 	Notify      bool                    `json:"notifyChanges,omitempty"`
+	// Tooltip is shown while the pointer hovers the element.
+	Tooltip string `json:"tooltip,omitempty"`
+	// Wrap splits text into lines at Width; Ellipsis cuts a single line at
+	// Width with "…". Align is "left", "center" or "right" within Width.
+	Wrap     bool   `json:"wrap,omitempty"`
+	Ellipsis bool   `json:"ellipsis,omitempty"`
+	Align    string `json:"align,omitempty"`
+	// Items and RowHeight define a scrollable "list". Clicking a row sends a
+	// "select" event with ButtonID set to the list ID and Reason to the item ID;
+	// Value holds the selected item ID.
+	Items     []ClientScreenListItem `json:"items,omitempty"`
+	RowHeight int                    `json:"rowHeight,omitempty"`
+	// Min, Max and Step configure a "slider"; Value holds its number.
+	// A "checkbox" uses Value "true" or "false".
+	Min  float64 `json:"min,omitempty"`
+	Max  float64 `json:"max,omitempty"`
+	Step float64 `json:"step,omitempty"`
+	// Item and Count render an "item" icon such as "minecraft:diamond".
+	Item  string `json:"item,omitempty"`
+	Count int    `json:"count,omitempty"`
+	// Texture draws an "image" region from a resource-pack texture such as
+	// "minecraft:textures/gui/title/minecraft.png". U/V select the region and
+	// TextureWidth/TextureHeight give the full texture size (default Width/Height).
+	Texture       string `json:"texture,omitempty"`
+	TextureWidth  int    `json:"textureWidth,omitempty"`
+	TextureHeight int    `json:"textureHeight,omitempty"`
+	U             int    `json:"u,omitempty"`
+	V             int    `json:"v,omitempty"`
+}
+
+// ClientScreenListItem is one row of a "list" element.
+type ClientScreenListItem struct {
+	ID      string `json:"id"`
+	Text    string `json:"text"`
+	Color   uint32 `json:"color,omitempty"`
+	Tooltip string `json:"tooltip,omitempty"`
 }
 
 // ClientScreenFieldType selects the widget used by a client screen field.
@@ -485,7 +597,10 @@ type ClientScreenButton struct {
 	Close bool   `json:"close,omitempty"`
 }
 
-// ClientScreenEvent reports a button press or screen closure to a Go plugin.
+// ClientScreenEvent reports screen interaction to a Go plugin. Type is
+// "button", "closed", "change" (notifying input edited), "scroll" (Reason "up"
+// or "down"), "select" (list row; Reason is the item ID) or "submit" (Enter in
+// an input; ButtonID is the input ID).
 type ClientScreenEvent struct {
 	ScreenID string            `json:"screenId"`
 	Type     string            `json:"type"`
@@ -525,6 +640,9 @@ const (
 )
 
 // HUDElement is a retained client HUD primitive. Color uses ARGB byte order.
+// A "panel" draws newline-separated Text on a Background box sized by the
+// client font, with an optional Accent bar on the left; X/Y/Anchor place the
+// whole box.
 // A text element with non-zero Width/Height is anchored using those sizes
 // instead of the measured text bounds.
 type HUDElement struct {
@@ -544,6 +662,13 @@ type HUDElement struct {
 	// OverScreens draws the element above open screens instead of the in-game
 	// HUD layer, so it stays visible in menus and plugin screens.
 	OverScreens bool `json:"overScreens,omitempty"`
+	// HideOnScreens hides the element while any screen is open.
+	HideOnScreens bool `json:"hideOnScreens,omitempty"`
+	// Background, Padding, LineSpacing and Accent style "panel" elements.
+	Background  uint32 `json:"background,omitempty"`
+	Padding     int    `json:"padding,omitempty"`
+	LineSpacing int    `json:"lineSpacing,omitempty"`
+	Accent      uint32 `json:"accent,omitempty"`
 }
 
 type SystemCallRequest struct {

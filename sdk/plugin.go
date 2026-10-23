@@ -27,11 +27,11 @@ type ClientChatHandler interface {
 	ClientChat(context *Context, event ClientChatEvent) error
 }
 
-// ClientTitleHandler receives title-screen events and main-menu button
-// clicks declared with Context.AddTitleButton. Invoked only by a client
+// ClientMenuHandler receives title-screen events and title/pause menu button
+// clicks declared with Context.AddMenuButton. Invoked only by a client
 // native runtime, including when no world is open.
-type ClientTitleHandler interface {
-	ClientTitle(context *Context, event ClientTitleEvent) error
+type ClientMenuHandler interface {
+	ClientMenu(context *Context, event ClientMenuEvent) error
 }
 
 // ClientScreenEventHandler receives interactions from a screen opened by the

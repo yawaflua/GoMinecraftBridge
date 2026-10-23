@@ -13,6 +13,11 @@ public record HudElementDto(
 		boolean shadow,
 		String anchor,
 		long durationMillis,
-		boolean overScreens
+		boolean overScreens,
+		boolean hideOnScreens,
+		long background,
+		int padding,
+		int lineSpacing,
+		long accent
 ) {
 }

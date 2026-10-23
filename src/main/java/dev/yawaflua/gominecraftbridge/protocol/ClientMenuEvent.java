@@ -1,6 +1,6 @@
 package dev.yawaflua.gominecraftbridge.protocol;
 
-public record ClientTitleEvent(
+public record ClientMenuEvent(
 		String type,
 		String buttonId,
 		String screen,

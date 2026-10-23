@@ -7,7 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class ClientTitleButtons {
+public final class ClientMenuButtons {
 	public static final String TITLE = "title";
 	public static final String PAUSE = "pause";
 
@@ -21,7 +21,7 @@ public final class ClientTitleButtons {
 
 	public synchronized void add(LoadedPlugin plugin, String id, String label, String screen, int x, int y, int width) {
 		if (id == null || id.isBlank() || label == null || label.isBlank()) {
-			throw new IllegalArgumentException("Title button requires id and label");
+			throw new IllegalArgumentException("Menu button requires id and label");
 		}
 		String target = screen == null || screen.isBlank() ? TITLE : screen;
 		if (!TITLE.equals(target) && !PAUSE.equals(target)) {
